@@ -477,11 +477,33 @@ namespace TreeCounterAddin
                 var latRad = p.Lat * Math.PI / 180.0;
                 var dLat = thisLineLenDeg * Math.Cos(bearingRad);
                 var dLon = thisLineLenDeg * Math.Sin(bearingRad) / Math.Max(Math.Cos(latRad), 0.1);
-                var start = MapPointBuilderEx.CreateMapPoint(p.Lon, p.Lat, SpatialReferences.WGS84);
-                var end = MapPointBuilderEx.CreateMapPoint(p.Lon + dLon, p.Lat + dLat, SpatialReferences.WGS84);
+                var endLon = p.Lon + dLon;
+                var endLat = p.Lat + dLat;
+
+                // Decorative bow, not a real streamline (still out of scope - see
+                // AddWindGridAsync's own comment) - bends each straight line gently to one
+                // side via a quadratic Bezier sampled into a many-point polyline, so it
+                // reads as "flowing" instead of ruler-straight. Same rotation direction
+                // (+90 deg) for every line, not randomized per line, so the whole grid bends
+                // the same way rather than looking chaotic.
+                var perpBearingRad = bearingRad + Math.PI / 2.0;
+                var bowLenDeg = thisLineLenDeg * 0.18;
+                var midLon = (p.Lon + endLon) / 2.0 + bowLenDeg * Math.Sin(perpBearingRad) / Math.Max(Math.Cos(latRad), 0.1);
+                var midLat = (p.Lat + endLat) / 2.0 + bowLenDeg * Math.Cos(perpBearingRad);
+
+                const int curveSteps = 10;
+                var curvePoints = new MapPoint[curveSteps + 1];
+                for (int s = 0; s <= curveSteps; s++)
+                {
+                    var t = (double)s / curveSteps;
+                    var u = 1.0 - t;
+                    var lon = u * u * p.Lon + 2 * u * t * midLon + t * t * endLon;
+                    var lat = u * u * p.Lat + 2 * u * t * midLat + t * t * endLat;
+                    curvePoints[s] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
+                }
 
                 using var rowBuffer = featureClass.CreateRowBuffer();
-                rowBuffer[shapeField] = PolylineBuilderEx.CreatePolyline(new[] { start, end }, SpatialReferences.WGS84);
+                rowBuffer[shapeField] = PolylineBuilderEx.CreatePolyline(curvePoints, SpatialReferences.WGS84);
                 rowBuffer["WindSpeedKmh"] = p.Speed;
                 rowBuffer["SmokeDirDeg"] = p.SmokeDir;
                 insertCursor.Insert(rowBuffer);
