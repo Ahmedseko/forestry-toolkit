@@ -172,9 +172,21 @@ namespace TreeCounterAddin
                     if (mapExtent == null || mapExtent.IsEmpty) return null;
                     return GeometryEngine.Instance.Project(mapExtent, SpatialReferences.WGS84) as Envelope;
                 });
-                if (extent == null)
+                // GeometryEngine.Project can come back with a non-null Envelope that's still
+                // garbage (NaN, or coordinates outside valid lat/lon range) if the map's own
+                // spatial reference makes the current view's extent fall outside where that
+                // projection is well-defined (e.g. a UTM-zone map zoomed out to a
+                // near-world view - UTM math breaks down far from its own central meridian).
+                // Sending that straight to FIRMS would silently come back with zero rows
+                // instead of a clear reason why - caught here instead.
+                bool ValidLon(double v) => !double.IsNaN(v) && v >= -180 && v <= 180;
+                bool ValidLat(double v) => !double.IsNaN(v) && v >= -90 && v <= 90;
+                if (extent == null || !ValidLon(extent.XMin) || !ValidLon(extent.XMax) || !ValidLat(extent.YMin) || !ValidLat(extent.YMax)
+                    || extent.XMin >= extent.XMax || extent.YMin >= extent.YMax)
                 {
-                    FirmsStatus = Tr("Could not read the current map extent.", "Tidak bisa membaca extent map saat ini.");
+                    FirmsStatus = Tr(
+                        "Current map extent didn't convert to a valid lat/lon area - zoom to your actual site on the map first (this can happen zoomed out to a world view on a UTM-projected map).",
+                        "Extent map saat ini tidak bisa dikonversi jadi area lat/lon yang valid - zoom dulu ke lokasi kerja Anda di map (bisa terjadi kalau map ter-zoom keluar ke tampilan dunia pada map berproyeksi UTM).");
                     return;
                 }
 
@@ -195,8 +207,12 @@ namespace TreeCounterAddin
                 var rows = ParseFirmsCsv(csv);
                 if (rows.Count == 0)
                 {
-                    FirmsStatus = Tr("Done: no fire hotspots found in the current map extent for this date range.",
-                        "Selesai: tidak ada titik panas ditemukan di extent map saat ini untuk rentang tanggal ini.");
+                    // Shows the actual lat/lon box that was searched - a genuine "no fires
+                    // this week" and "the extent used was nowhere near where you meant" look
+                    // identical otherwise, and only one of them means try a wider day range.
+                    var areaNote = FormattableString.Invariant($" (area searched: {extent.YMin:F2},{extent.XMin:F2} to {extent.YMax:F2},{extent.XMax:F2})");
+                    FirmsStatus = Tr($"Done: no fire hotspots found for this area/date range.{areaNote}",
+                        $"Selesai: tidak ada titik panas ditemukan untuk area/rentang tanggal ini.{areaNote}");
                     return;
                 }
 
