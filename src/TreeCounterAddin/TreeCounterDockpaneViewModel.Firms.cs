@@ -462,13 +462,16 @@ namespace TreeCounterAddin
             // Total streamline length as a fraction of grid spacing, scaled 40-100% by that
             // seed's own local speed (so faster wind visibly draws a longer line), same
             // reasoning as the earlier fixed-line version - just now spread across many
-            // short RK4 steps instead of one straight/bowed segment. 2.4x a single cell
-            // (not ~1x) - checked the actual traced vertices directly in the geodatabase
-            // (2026-08-26): RK4 was tracing real curvature correctly, but at ~1 cell of
-            // travel a fairly steady real wind field just hadn't changed direction enough
-            // yet for the bend to read clearly on screen - letting each line travel across
-            // multiple cells gives the field more room to actually show its own variation.
-            var baseLenDeg = Math.Min(lonStepDeg, latStepDeg) * 2.4;
+            // short RK4 steps instead of one straight/bowed segment.
+            //
+            // Tried 2.4x a cell to expose more real curvature (checked against actual
+            // traced vertices in the geodatabase - RK4 itself was correct, a steady real
+            // wind field just hadn't turned much over ~1 cell) - reverted (2026-08-26) after
+            // a real zoomed-in screenshot showed lines dwarfing the hotspot clusters they're
+            // meant to give local context for. A short, mostly-straight line that fits the
+            // area is more useful here than a long one chasing visible curvature - the field
+            // being genuinely steady in this area is an honest result, not a defect.
+            var baseLenDeg = Math.Min(lonStepDeg, latStepDeg) * 0.9;
             await QueuedTask.Run(() =>
             {
                 using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(project.DefaultGeodatabasePath)));
