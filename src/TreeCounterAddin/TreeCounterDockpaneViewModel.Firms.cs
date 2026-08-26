@@ -389,12 +389,19 @@ namespace TreeCounterAddin
             var outputFc = Path.Combine(project.DefaultGeodatabasePath, $"WindDirection_{stamp}");
             if (!await CreateWindFeatureClassAsync(outputFc, SpatialReferences.WGS84)) return "";
 
+            // Line length as a fraction of the grid spacing, so arrows don't overlap their
+            // neighbors - independent of X/Y since lat/lon degrees aren't equal real-world
+            // distances (longitude degrees shrink toward the poles).
+            var lonStepDeg = (extentWgs84.XMax - extentWgs84.XMin) / WindGridSize;
+            var latStepDeg = (extentWgs84.YMax - extentWgs84.YMin) / WindGridSize;
+            var lineLenDeg = Math.Min(lonStepDeg, latStepDeg) * 0.4;
+
             await QueuedTask.Run(() =>
             {
-                InsertWindRows(outputFc, points);
+                InsertWindLines(outputFc, points, lineLenDeg);
                 if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                     return;
-                newLayer.SetRenderer(BuildWindRenderer(points));
+                newLayer.SetRenderer(new CIMSimpleRenderer { Symbol = BuildWindLineSymbol().MakeSymbolReference() });
             });
 
             var avgSpeed = points.Average(p => p.Speed);
@@ -402,69 +409,28 @@ namespace TreeCounterAddin
                 $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {points.Count} titik (panah arah asap ditambahkan).");
         }
 
-        // Two earlier attempts at a shared symbol + CIMRotationVisualVariable (first
-        // VBScript-style "[Field]" expression syntax, then Arcade via
-        // ValueExpressionInfo/CIMExpressionInfo - the same form ArcGIS Pro's own Symbology
-        // pane generates) both came back with every triangle pointing the same way
-        // regardless of position, confirmed 2026-08-26 by checking the actual stored
-        // SmokeDirDeg values directly in the geodatabase (they genuinely varied - the bug
-        // was in the renderer, not the data). Sidesteps the whole data-driven-rotation
-        // mechanism instead: one CIMUniqueValueClass per grid point, keyed on OBJECTID
-        // (reliably 1..N in insertion order for a freshly-created feature class), each with
-        // its own symbol whose Angle is baked in at construction time - same
-        // CIMPointSymbol.Angle mechanism already used for other single-point symbols in
-        // this add-in, just built N times instead of relying on live field lookup.
-        private static CIMUniqueValueRenderer BuildWindRenderer(List<(double Lat, double Lon, double Speed, double SmokeDir)> points)
+        // Two earlier attempts at rotating a POINT symbol per feature (a data-driven
+        // CIMRotationVisualVariable, then 16 individually-angled symbols via a unique-value
+        // renderer) either silently failed to rotate or came back with a shape too
+        // ambiguous to read as a direction (real feedback, 2026-08-26 - "a triangle alone
+        // doesn't say where it's from or where it's going"). Switched to real LINE geometry
+        // instead: each line's own start->end already encodes its direction, so a single
+        // shared CIMLineSymbol (built once, not per feature) with a Triangle marker placed
+        // "at extremities" (ArcGIS's native mechanism for arrowhead-on-line symbology,
+        // AngleToLine=true auto-orients the head to match each line's own bearing) replaces
+        // all the per-feature rotation math entirely - one renderer for every line, no
+        // OBJECTID-keyed classes needed.
+        private static CIMLineSymbol BuildWindLineSymbol()
         {
-            CIMUniqueValueClass ClassFor(int objectId, double smokeDir)
+            var color = ColorFactory.Instance.CreateRGBColor(30, 90, 220);
+            var stroke = new CIMSolidStroke { Color = color, Width = 1.5 };
+            var head = SymbolFactory.Instance.ConstructMarker(color, 8, SimpleMarkerStyle.Triangle);
+            head.MarkerPlacement = new CIMMarkerPlacementAtExtremities
             {
-                // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
-                // compass bearing (clockwise from north) - standard conversion. The arrow
-                // (see BuildArrowSymbol) points up (north/0 deg compass) at Angle=0, same as
-                // a bare Triangle would.
-                var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                var symbol = BuildArrowSymbol(ColorFactory.Instance.CreateRGBColor(30, 90, 220), 14, mathAngle);
-                return new CIMUniqueValueClass
-                {
-                    Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
-                    Symbol = symbol.MakeSymbolReference(),
-                };
-            }
-
-            return new CIMUniqueValueRenderer
-            {
-                Fields = new[] { "OBJECTID" },
-                Groups = new[]
-                {
-                    new CIMUniqueValueGroup
-                    {
-                        Classes = points.Select((p, i) => ClassFor(i + 1, p.SmokeDir)).ToArray(),
-                    },
-                },
+                ExtremityPlacement = ExtremityPlacement.JustEnd,
+                AngleToLine = true,
             };
-        }
-
-        // A bare Triangle alone reads as "a shape", not "a direction" (real feedback,
-        // 2026-08-26 - hard to tell head from tail at a glance). Combines a thin Rod
-        // (shaft/tail) with a Triangle (arrowhead/tip) into one CIMPointSymbol, offset apart
-        // along the local up-axis, so it reads as an actual arrow. CIMPointSymbol.Angle
-        // rotates every layer in SymbolLayers together as one unit (per its own XML doc:
-        // "propagated cumulatively to all marker symbols"), so the whole arrow turns as a
-        // single piece from the one Angle value already computed per grid point.
-        private static CIMPointSymbol BuildArrowSymbol(CIMColor color, double size, double angleDeg)
-        {
-            var headSymbol = SymbolFactory.Instance.ConstructPointSymbol(color, size, SimpleMarkerStyle.Triangle);
-            var shaftSymbol = SymbolFactory.Instance.ConstructPointSymbol(color, size * 0.7, SimpleMarkerStyle.Rod);
-            var head = (CIMVectorMarker)headSymbol.SymbolLayers[0];
-            var shaft = (CIMVectorMarker)shaftSymbol.SymbolLayers[0];
-            head.OffsetY = size * 0.4;
-            shaft.OffsetY = -size * 0.15;
-
-            return new CIMPointSymbol
-            {
-                SymbolLayers = new CIMSymbolLayer[] { shaft, head },
-                Angle = angleDeg,
-            };
+            return new CIMLineSymbol { SymbolLayers = new CIMSymbolLayer[] { stroke, head } };
         }
 
         private static async Task<bool> CreateWindFeatureClassAsync(string fc, SpatialReference sr)
@@ -472,7 +438,7 @@ namespace TreeCounterAddin
             var gdb = Path.GetDirectoryName(fc);
             var name = Path.GetFileName(fc);
             var createResult = await Geoprocessing.ExecuteToolAsync("management.CreateFeatureclass",
-                Geoprocessing.MakeValueArray(gdb, name, "POINT", "", "DISABLED", "DISABLED", sr),
+                Geoprocessing.MakeValueArray(gdb, name, "POLYLINE", "", "DISABLED", "DISABLED", sr),
                 null, cancelToken: null, flags: GPExecuteToolFlags.RefreshProjectItems);
             if (createResult.IsFailed) return false;
 
@@ -486,8 +452,11 @@ namespace TreeCounterAddin
             return true;
         }
 
-        // Must run on the MCT (QueuedTask).
-        private static void InsertWindRows(string fc, List<(double Lat, double Lon, double Speed, double SmokeDir)> points)
+        // Must run on the MCT (QueuedTask). Each line runs from the grid point toward the
+        // smoke-drift bearing - a flat-plane offset (fine at this scale), longitude step
+        // divided by cos(latitude) since a degree of longitude covers less real-world
+        // distance away from the equator.
+        private static void InsertWindLines(string fc, List<(double Lat, double Lon, double Speed, double SmokeDir)> points, double lineLenDeg)
         {
             using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(Path.GetDirectoryName(fc))));
             using var featureClass = geodatabase.OpenDataset<ArcGIS.Core.Data.FeatureClass>(Path.GetFileName(fc));
@@ -495,8 +464,15 @@ namespace TreeCounterAddin
             var shapeField = featureClass.GetDefinition().GetShapeField();
             foreach (var p in points)
             {
+                var bearingRad = p.SmokeDir * Math.PI / 180.0;
+                var latRad = p.Lat * Math.PI / 180.0;
+                var dLat = lineLenDeg * Math.Cos(bearingRad);
+                var dLon = lineLenDeg * Math.Sin(bearingRad) / Math.Max(Math.Cos(latRad), 0.1);
+                var start = MapPointBuilderEx.CreateMapPoint(p.Lon, p.Lat, SpatialReferences.WGS84);
+                var end = MapPointBuilderEx.CreateMapPoint(p.Lon + dLon, p.Lat + dLat, SpatialReferences.WGS84);
+
                 using var rowBuffer = featureClass.CreateRowBuffer();
-                rowBuffer[shapeField] = MapPointBuilderEx.CreateMapPoint(p.Lon, p.Lat, SpatialReferences.WGS84);
+                rowBuffer[shapeField] = PolylineBuilderEx.CreatePolyline(new[] { start, end }, SpatialReferences.WGS84);
                 rowBuffer["WindSpeedKmh"] = p.Speed;
                 rowBuffer["SmokeDirDeg"] = p.SmokeDir;
                 insertCursor.Insert(rowBuffer);
