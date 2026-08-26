@@ -505,13 +505,21 @@ namespace TreeCounterAddin
                 // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
                 // compass bearing (clockwise from north) - standard conversion.
                 var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                // SymbolFactory.ConstructMarker(...) tried and still failed to rotate (real
-                // test, 2026-08-26, both Rod and Triangle) - the marker layer extracted from
-                // ConstructPointSymbol(...).SymbolLayers[0] is what the one confirmed-working
-                // rotation earlier in this investigation actually used; matched exactly
-                // instead of assuming the two factory paths are equivalent.
-                var marker = SymbolFactory.Instance.ConstructPointSymbol(color, 9, SimpleMarkerStyle.Triangle).SymbolLayers[0];
-                var symbol = new CIMPointSymbol { SymbolLayers = new[] { marker }, Angle = mathAngle };
+                // Single-layer symbols (ConstructMarker directly, and a single marker pulled
+                // from ConstructPointSymbol(...).SymbolLayers[0]) both still failed to rotate
+                // (real tests, 2026-08-26) even at the exact class count (16) that worked
+                // before - the one remaining difference from that working version is that it
+                // combined TWO marker layers (shaft + head) with an explicit
+                // (CIMVectorMarker) cast on each. Reverted to that exact shape instead of a
+                // single Triangle, to see whether a lone SymbolLayers entry is itself what's
+                // silently ignored.
+                var headSymbol = SymbolFactory.Instance.ConstructPointSymbol(color, 9, SimpleMarkerStyle.Triangle);
+                var shaftSymbol = SymbolFactory.Instance.ConstructPointSymbol(color, 6, SimpleMarkerStyle.Rod);
+                var head = (CIMVectorMarker)headSymbol.SymbolLayers[0];
+                var shaft = (CIMVectorMarker)shaftSymbol.SymbolLayers[0];
+                head.OffsetY = 3.5;
+                shaft.OffsetY = -1.5;
+                var symbol = new CIMPointSymbol { SymbolLayers = new CIMSymbolLayer[] { shaft, head }, Angle = mathAngle };
                 return new CIMUniqueValueClass
                 {
                     Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
