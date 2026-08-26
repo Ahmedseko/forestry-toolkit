@@ -354,8 +354,12 @@ namespace TreeCounterAddin
         // second rotation attempt (confirmed working then) instead of a data-driven
         // expression (confirmed NOT working, twice, earlier in this same investigation).
         private const int WindGridSize = 5;
-        private const int WindDashGridX = 14;
-        private const int WindDashGridY = 10;
+        // TEMP diagnostic (2026-08-26): dropped from 14x10=140 to 4x4=16 - the exact count
+        // that was confirmed rotating correctly earlier in this investigation - to isolate
+        // whether the unique-value renderer's class count itself is the real variable, after
+        // marker shape and construction method were both ruled out.
+        private const int WindDashGridX = 4;
+        private const int WindDashGridY = 4;
 
         private async Task<string> AddWindGridAsync(Map map, Envelope extentWgs84, Project project, string stamp)
         {
