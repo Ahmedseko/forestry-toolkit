@@ -53,8 +53,21 @@ namespace TreeCounterAddin
         // provider saved key when SelectedProvider changes) - since PasswordBoxes can't be
         // bound, that write needs to be pushed into the box by hand too, or the box would
         // still show the old value even though the ViewModel already moved on.
+        //
+        // PropertyChanged fires for every property on the ViewModel (StatusText,
+        // FishnetStatus, ...), including from background threads (e.g.
+        // RefreshRasterLayersAsync, off a layer-added event) - DataContext is a WPF
+        // DependencyProperty tied to this control's owner thread, so touching it from one
+        // of those background-thread firings throws InvalidOperationException and takes
+        // down the whole ArcGIS Pro process (crash confirmed via Windows Event Viewer,
+        // 2026-08-26). The name filter below MUST run first and return before DataContext
+        // is ever read, for exactly the two property names this handler cares about.
         private void ViewModel_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
+            if (e.PropertyName != nameof(TreeCounterDockpaneViewModel.ApiKey) &&
+                e.PropertyName != nameof(TreeCounterDockpaneViewModel.FirmsMapKey))
+                return;
+
             if (DataContext is not TreeCounterDockpaneViewModel vm) return;
 
             if (e.PropertyName == nameof(TreeCounterDockpaneViewModel.ApiKey) && ApiKeyBox.Password != vm.ApiKey)
