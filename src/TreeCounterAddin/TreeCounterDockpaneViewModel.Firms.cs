@@ -485,7 +485,13 @@ namespace TreeCounterAddin
         // One CIMUniqueValueClass per dash, keyed on OBJECTID with its own baked-in
         // CIMPointSymbol.Angle - the same mechanism already proven to work reliably earlier
         // in this investigation (a data-driven rotation expression was tried twice and
-        // silently failed both times; this baked-per-symbol approach didn't).
+        // silently failed both times; this baked-per-symbol approach didn't) - but
+        // constructed the SAME way that earlier confirmed-working version actually built its
+        // symbol (a manually-built `new CIMPointSymbol { SymbolLayers = ..., Angle = ... }`
+        // in one object initializer), not via SymbolFactory.ConstructPointSymbol(...) with
+        // .Angle mutated on the object afterward - that variant came back with every dash
+        // pointing the same way regardless of position (real report, 2026-08-26), the same
+        // silent-rotation-ignored failure mode as the two data-driven-expression attempts.
         private static CIMUniqueValueRenderer BuildWindDashRenderer(List<double> smokeDirsDeg)
         {
             var color = ColorFactory.Instance.CreateRGBColor(30, 90, 220);
@@ -495,8 +501,8 @@ namespace TreeCounterAddin
                 // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
                 // compass bearing (clockwise from north) - standard conversion.
                 var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                var symbol = SymbolFactory.Instance.ConstructPointSymbol(color, 9, SimpleMarkerStyle.Rod);
-                symbol.Angle = mathAngle;
+                var marker = SymbolFactory.Instance.ConstructMarker(color, 9, SimpleMarkerStyle.Rod);
+                var symbol = new CIMPointSymbol { SymbolLayers = new CIMSymbolLayer[] { marker }, Angle = mathAngle };
                 return new CIMUniqueValueClass
                 {
                     Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
