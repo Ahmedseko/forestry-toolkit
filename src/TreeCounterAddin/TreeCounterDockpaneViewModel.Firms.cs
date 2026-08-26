@@ -294,7 +294,7 @@ namespace TreeCounterAddin
         // AutoAdjustPixelIntensity = true instead of a fixed MaxPixelIntensity - lets the
         // renderer self-scale to whatever's actually visible rather than needing this code
         // to pre-compute a density statistic across the loaded points.
-        private static CIMHeatMapRenderer BuildHeatMapRenderer()
+        private CIMHeatMapRenderer BuildHeatMapRenderer()
         {
             // Leaving ColorScheme unset turned out to fall back to grayscale, not the
             // red/orange/yellow "hot" look expected (confirmed 2026-08-26 - a real run came
@@ -316,6 +316,12 @@ namespace TreeCounterAddin
                     ColorRamps = new CIMColorRamp[] { redToOrange, orangeToYellow },
                     Weights = new[] { 0.5, 0.5 },
                 },
+                // The Contents pane swatch showed a bare gradient bar with no indication of
+                // which end means what (real report, 2026-08-26) - these three are exactly
+                // what the CIM model provides for that, no custom legend code needed.
+                Heading = Tr("Hotspot point density", "Kepadatan titik panas"),
+                MinLabel = Tr("Fewer/sparser points", "Titik lebih sedikit/jarang"),
+                MaxLabel = Tr("More/denser points", "Titik lebih banyak/padat"),
             };
         }
 
@@ -323,9 +329,10 @@ namespace TreeCounterAddin
 
         // VIIRS' confidence column is already categorical (l/n/h) - MODIS' is a 0-100
         // percentage instead. Bucketed here into the same l/n/h scale (FIRMS' own published
-        // MODIS tiers: <30 low, 30-80 nominal, >80 high) so BuildConfidenceRenderer's
-        // renderer can key on one field regardless of which source a row came from, instead
-        // of needing separate logic per source.
+        // MODIS tiers: <30 low, 30-80 nominal, >80 high) so the Confidence field stays
+        // consistently readable in the attribute table regardless of which source a row
+        // came from, even though the layer's own symbology (BuildHeatMapRenderer) is
+        // density-based now rather than keyed on this field.
         private static string NormalizeConfidence(string raw)
         {
             var trimmed = raw.Trim().ToLowerInvariant();
