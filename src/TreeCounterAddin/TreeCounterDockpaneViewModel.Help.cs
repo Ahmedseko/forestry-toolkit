@@ -189,9 +189,10 @@ namespace TreeCounterAddin
             burning is a common land-clearing method. "All Sources" (the default satellite
             source) queries 4 satellites (VIIRS x3 + MODIS) and merges the results, since
             each one passes over at a different time and can miss a fire the others catch;
-            pick a single source instead if you specifically want just one. Points are colored by
-            confidence - red (high), amber (low), orange (nominal) - instead of one flat
-            color. Set a day range (1-10 days, ending today), click Load Fire Hotspots.
+            pick a single source instead if you specifically want just one. Shown as a heat
+            map (a density blob, not individual dots) - right-click the layer > Symbology
+            to switch to individual points or another style if you'd rather. Set a day
+            range (1-10 days, ending today), click Load Fire Hotspots.
             Needs a free MAP_KEY from firms.modaps.eosdis.nasa.gov, entered once on the
             Settings tab.
 
@@ -437,8 +438,9 @@ namespace TreeCounterAddin
             membakar adalah metode pembukaan lahan yang umum. "All Sources" (source default)
             query 4 satelit sekaligus (VIIRS x3 + MODIS) lalu digabung, karena tiap satelit
             lewat di jam berbeda dan bisa melewatkan titik yang tertangkap satelit lain; pilih satu
-            source spesifik kalau memang cuma butuh satu. Titik diwarnai sesuai confidence
-            - merah (tinggi), kuning (rendah), oranye (nominal) - bukan satu warna flat.
+            source spesifik kalau memang cuma butuh satu. Ditampilkan sebagai heat map
+            (area gradasi kepadatan, bukan titik satu-satu) - klik kanan layer > Symbology
+            kalau mau ganti ke titik individual atau gaya lain.
             Atur rentang hari (1-10 hari, hingga hari ini), klik Load Fire Hotspots. Butuh
             MAP_KEY gratis dari firms.modaps.eosdis.nasa.gov, diisi sekali di tab Settings.
 

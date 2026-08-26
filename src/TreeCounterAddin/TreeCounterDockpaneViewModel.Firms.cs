@@ -259,7 +259,7 @@ namespace TreeCounterAddin
                     InsertFirmsRows(outputFc, rows);
                     if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                         return;
-                    newLayer.SetRenderer(BuildConfidenceRenderer());
+                    newLayer.SetRenderer(BuildHeatMapRenderer());
                 });
 
                 var failedNote = failedSources.Count == 0 ? "" :
@@ -287,46 +287,22 @@ namespace TreeCounterAddin
             }
         }
 
-        // Same 3-tier confidence colors as the sgis (SQIS) mobile app's FirmsParser:
-        // high = red (most likely a real fire), low = amber (more likely noise/false
-        // detection), nominal/anything else = the original orange as a middle ground -
-        // a flat single color couldn't tell those apart, but VIIRS's own "l"/"n"/"h"
-        // confidence field already carries this distinction, it just wasn't used yet.
-        // MODIS's confidence field is a 0-100 number instead of l/n/h - it falls through
-        // to the default (nominal) color here, since MODIS isn't in the merged/default
-        // query path anyway (see AllViirsSource above).
-        private static CIMUniqueValueRenderer BuildConfidenceRenderer()
+        // Draws density instead of individual dots - a real request after seeing a NASA-
+        // style filled heat blob image, vs. this layer's previous discrete colored points.
+        // Field = "" counts each point once (not weighted by any numeric column, e.g. FRP -
+        // a plain count-density read is what the reference image showed).
+        // AutoAdjustPixelIntensity = true instead of a fixed MaxPixelIntensity - lets the
+        // renderer self-scale to whatever's actually visible rather than needing this code
+        // to pre-compute a density statistic across the loaded points. ColorScheme left
+        // unset - Esri's own default heat-map ramp (yellow-orange-red) already matches the
+        // reference image, no custom CIMColorRamp needed.
+        private static CIMHeatMapRenderer BuildHeatMapRenderer() => new()
         {
-            CIMSymbolReference Dot(int r, int g, int b) => SymbolFactory.Instance
-                .ConstructPointSymbol(ColorFactory.Instance.CreateRGBColor(r, g, b), 7, SimpleMarkerStyle.Circle)
-                .MakeSymbolReference();
-
-            CIMUniqueValueClass Class(string label, string value, CIMSymbolReference symbol) => new()
-            {
-                Label = label,
-                Symbol = symbol,
-                Values = new[] { new CIMUniqueValue { FieldValues = new[] { value } } },
-            };
-
-            return new CIMUniqueValueRenderer
-            {
-                Fields = new[] { "Confidence" },
-                Groups = new[]
-                {
-                    new CIMUniqueValueGroup
-                    {
-                        Classes = new[]
-                        {
-                            Class("High confidence", "h", Dot(255, 51, 0)),
-                            Class("Low confidence", "l", Dot(255, 170, 0)),
-                        },
-                    },
-                },
-                UseDefaultSymbol = true,
-                DefaultLabel = "Nominal confidence",
-                DefaultSymbol = Dot(255, 102, 0),
-            };
-        }
+            Field = "",
+            Radius = 15,
+            RendererQuality = 8,
+            AutoAdjustPixelIntensity = true,
+        };
 
         private sealed record FirmsHotspot(double Lat, double Lon, string AcqDate, string AcqTime, string Confidence, double Frp, string Satellite, string DayNight);
 
