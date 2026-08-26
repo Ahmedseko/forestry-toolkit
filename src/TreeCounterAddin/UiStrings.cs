@@ -279,7 +279,7 @@ namespace TreeCounterAddin
             ["AiValidation_ModelLabel"] = ("Model", "Model"),
             ["AiValidation_TestKey"] = ("Test Key", "Test Key"),
 
-            ["FirmsSettings_Header"] = ("NASA FIRMS Fire Alerts", "NASA FIRMS Fire Alerts"),
+            ["FirmsSettings_Header"] = ("NASA FIRMS MAP_KEY", "NASA FIRMS MAP_KEY"),
             ["FirmsSettings_Hint"] = (
                 "MAP_KEY for the NASA FIRMS Fire Hotspots feature on the Analyze tab - free, get one at firms.modaps.eosdis.nasa.gov. Stored encrypted on this computer only.",
                 "MAP_KEY untuk fitur Fire Hotspots NASA FIRMS di tab Analyze - gratis, dapatkan di firms.modaps.eosdis.nasa.gov. Disimpan terenkripsi hanya di komputer ini."),
