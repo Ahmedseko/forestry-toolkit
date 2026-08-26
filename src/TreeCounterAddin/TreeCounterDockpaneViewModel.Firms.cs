@@ -13,6 +13,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -22,9 +23,9 @@ namespace TreeCounterAddin
     // NASA FIRMS (Fire Information for Resource Management System) active-fire hotspots,
     // for cross-checking Land Clearing Detection results against real fire activity (a
     // common land-clearing method) and general karhutla monitoring. Uses FIRMS' Area API
-    // (https://firms.modaps.eosdis.gov/api/area/) directly over HttpClient - a plain HTTPS
+    // (https://firms.modaps.eosdis.nasa.gov/api/area/) directly over HttpClient - a plain HTTPS
     // GET returning CSV, no arcpy/Python backend needed for the fetch itself. The MAP_KEY
-    // is a free per-user token from firms.modaps.eosdis.gov, reused through ApiKeyStore
+    // is a free per-user token from firms.modaps.eosdis.nasa.gov, reused through ApiKeyStore
     // (same DPAPI-encrypted dictionary the AI Vision Validation keys already use, just
     // under its own "firms" entry) rather than a second credential store.
     internal partial class TreeCounterDockpaneViewModel
@@ -84,6 +85,59 @@ namespace TreeCounterAddin
         public ICommand LoadFirmsHotspotsCommand => new RelayCommand(async () => await LoadFirmsHotspotsAsync(), () => !IsLoadingFirms);
         public ICommand CancelFirmsCommand => new RelayCommand(() => _firmsCts?.Cancel(), () => IsLoadingFirms);
 
+        private bool _isTestingFirmsKey;
+        public bool IsTestingFirmsKey
+        {
+            get => _isTestingFirmsKey;
+            set => SetProperty(ref _isTestingFirmsKey, value);
+        }
+
+        // Separate from "is FirmsMapKey filled in" - same reasoning TestKeyStatus (AI Vision
+        // Validation) already documents: a key that's simply wrong looks identical to one
+        // that's never been tried without an explicit confirmation.
+        private string _firmsTestKeyStatus = "";
+        public string FirmsTestKeyStatus
+        {
+            get => _firmsTestKeyStatus;
+            set => SetProperty(ref _firmsTestKeyStatus, value);
+        }
+
+        public ICommand TestFirmsKeyCommand => new RelayCommand(async () => await TestFirmsKeyAsync(), () => !IsTestingFirmsKey && !string.IsNullOrWhiteSpace(FirmsMapKey));
+
+        // FIRMS' own key-status endpoint (mapkey_status) - a valid key returns a flat JSON
+        // object with a transaction_limit field; an invalid one doesn't, so that field's
+        // presence is what "valid" is checked against rather than parsing for a specific
+        // error message that isn't documented anywhere.
+        private async Task TestFirmsKeyAsync()
+        {
+            IsTestingFirmsKey = true;
+            FirmsTestKeyStatus = Tr("Testing...", "Menguji...");
+            try
+            {
+                var url = $"https://firms.modaps.eosdis.nasa.gov/mapserver/mapkey_status/?MAP_KEY={FirmsMapKey}";
+                var json = await FirmsHttp.GetStringAsync(url);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("transaction_limit", out var limitEl))
+                {
+                    var used = doc.RootElement.TryGetProperty("current_transactions", out var usedEl) ? usedEl.ToString() : "?";
+                    FirmsTestKeyStatus = Tr($"OK: valid key, {used}/{limitEl} transactions used (resets every 10 min).",
+                        $"OK: key valid, {used}/{limitEl} transaksi terpakai (reset tiap 10 menit).");
+                }
+                else
+                {
+                    FirmsTestKeyStatus = Tr($"Invalid key - server response: {json.Trim()}", $"Key tidak valid - respons server: {json.Trim()}");
+                }
+            }
+            catch (Exception ex)
+            {
+                FirmsTestKeyStatus = Tr($"Failed: {ex.Message}", $"Gagal: {ex.Message}");
+            }
+            finally
+            {
+                IsTestingFirmsKey = false;
+            }
+        }
+
         // AOI is always the current map view's own extent - no separate layer picker, since
         // "hotspots over whatever I'm currently looking at" is the common case and it keeps
         // this feature to one click instead of an extra dropdown.
@@ -96,8 +150,8 @@ namespace TreeCounterAddin
             {
                 if (string.IsNullOrWhiteSpace(FirmsMapKey))
                 {
-                    FirmsStatus = Tr("No FIRMS MAP_KEY set - add one on the Settings tab (free at firms.modaps.eosdis.gov).",
-                        "MAP_KEY FIRMS belum diisi - tambahkan di tab Settings (gratis di firms.modaps.eosdis.gov).");
+                    FirmsStatus = Tr("No FIRMS MAP_KEY set - add one on the Settings tab (free at firms.modaps.eosdis.nasa.gov).",
+                        "MAP_KEY FIRMS belum diisi - tambahkan di tab Settings (gratis di firms.modaps.eosdis.nasa.gov).");
                     return;
                 }
                 if (MapView.Active == null)
@@ -126,7 +180,7 @@ namespace TreeCounterAddin
 
                 var dayRange = Math.Clamp(FirmsDayRange, 1, 10);
                 var bbox = FormattableString.Invariant($"{extent.XMin},{extent.YMin},{extent.XMax},{extent.YMax}");
-                var url = $"https://firms.modaps.eosdis.gov/api/area/csv/{FirmsMapKey}/{SelectedFirmsSource}/{bbox}/{dayRange}";
+                var url = $"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{FirmsMapKey}/{SelectedFirmsSource}/{bbox}/{dayRange}";
 
                 var csv = await FirmsHttp.GetStringAsync(url, _firmsCts.Token);
                 // A bad key or bad params comes back as a plain-text one-liner (e.g.

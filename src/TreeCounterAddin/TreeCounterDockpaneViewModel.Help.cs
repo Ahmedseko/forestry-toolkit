@@ -188,7 +188,7 @@ namespace TreeCounterAddin
             extent - useful for cross-checking Land Clearing Detection results, since
             burning is a common land-clearing method. Pick a satellite source and a day
             range (1-10 days, ending today), click Load Fire Hotspots. Needs a free
-            MAP_KEY from firms.modaps.eosdis.gov, entered once on the Settings tab.
+            MAP_KEY from firms.modaps.eosdis.nasa.gov, entered once on the Settings tab.
 
             Sliver Polygon Detection
             Automatically finds unusually small or unusually thin/elongated polygons in a
@@ -431,7 +431,7 @@ namespace TreeCounterAddin
             saat ini - berguna untuk cross-check hasil Land Clearing Detection, karena
             membakar adalah metode pembukaan lahan yang umum. Pilih sumber satelit dan
             rentang hari (1-10 hari, hingga hari ini), klik Load Fire Hotspots. Butuh
-            MAP_KEY gratis dari firms.modaps.eosdis.gov, diisi sekali di tab Settings.
+            MAP_KEY gratis dari firms.modaps.eosdis.nasa.gov, diisi sekali di tab Settings.
 
             Sliver Polygon Detection
             Otomatis mencari poligon yang ukurannya jauh lebih kecil atau bentuknya jauh

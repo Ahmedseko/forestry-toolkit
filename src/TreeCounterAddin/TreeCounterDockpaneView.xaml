@@ -767,6 +767,11 @@
                                 <TextBlock Text="{Binding IsHelpEnglish, Converter={StaticResource UiText}, ConverterParameter=FirmsSettings_Hint}"
                                            TextWrapping="Wrap" Margin="0,0,0,6" FontSize="11" Foreground="Gray"/>
                                 <PasswordBox x:Name="FirmsMapKeyBox" PasswordChanged="FirmsMapKeyBox_PasswordChanged" Margin="0,2"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Button Content="{Binding IsHelpEnglish, Converter={StaticResource UiText}, ConverterParameter=FirmsSettings_TestKey}" Command="{Binding TestFirmsKeyCommand}" Padding="8,2" FontSize="10"/>
+                                    <TextBlock Text="{Binding FirmsTestKeyStatus}" TextWrapping="Wrap" Margin="8,0,0,0"
+                                               VerticalAlignment="Center" FontSize="10" Foreground="Gray"/>
+                                </StackPanel>
                             </StackPanel>
                         </Expander>
                     </StackPanel>
