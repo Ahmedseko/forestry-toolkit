@@ -404,14 +404,22 @@ namespace TreeCounterAddin
 
         // A rotation visual variable instead of a fixed symbol.Angle, so each of the grid's
         // points can spin its own copy of the same triangle independently -
-        // SymbolRotationType.Geographic takes the SmokeDirDeg field straight as a compass
-        // bearing (clockwise from north), matching SimpleMarkerStyle.Triangle's default
+        // SymbolRotationType.Geographic takes the field straight as a compass bearing
+        // (clockwise from north), matching SimpleMarkerStyle.Triangle's default
         // north-pointing orientation - no arithmetic-angle conversion needed here, unlike
         // CIMPointSymbol.Angle used for other single-point symbols in this add-in.
+        //
+        // A real run (2026-08-26) came back with every triangle pointing the same way
+        // regardless of position - VisualVariableInfo.Expression's plain "[Field]" string is
+        // documented as the legacy VBScript-expression form (ArcGIS.Core.xml: "used for
+        // Python or VBScript expressions"), which this runtime apparently doesn't evaluate
+        // for a freshly-constructed CIM renderer (likely round-trip-only, for reading old
+        // documents). Switched to Arcade via ValueExpressionInfo instead - what ArcGIS Pro's
+        // own Symbology pane generates when you configure rotation through the UI.
         private static CIMSimpleRenderer BuildWindRenderer()
         {
             var symbol = SymbolFactory.Instance.ConstructPointSymbol(
-                ColorFactory.Instance.CreateRGBColor(30, 90, 220), 16, SimpleMarkerStyle.Triangle);
+                ColorFactory.Instance.CreateRGBColor(30, 90, 220), 10, SimpleMarkerStyle.Triangle);
             return new CIMSimpleRenderer
             {
                 Symbol = symbol.MakeSymbolReference(),
@@ -419,7 +427,15 @@ namespace TreeCounterAddin
                 {
                     new CIMRotationVisualVariable
                     {
-                        VisualVariableInfoZ = new CIMVisualVariableInfo { Expression = "[SmokeDirDeg]" },
+                        VisualVariableInfoZ = new CIMVisualVariableInfo
+                        {
+                            ValueExpressionInfo = new CIMExpressionInfo
+                            {
+                                Expression = "$feature.SmokeDirDeg",
+                                Title = "Smoke direction",
+                                ReturnType = ExpressionReturnType.Numeric,
+                            },
+                        },
                         RotationTypeZ = SymbolRotationType.Geographic,
                     },
                 },
