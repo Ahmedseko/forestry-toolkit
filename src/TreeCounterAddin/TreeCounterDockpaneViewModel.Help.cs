@@ -186,10 +186,10 @@ namespace TreeCounterAddin
             NASA FIRMS Fire Hotspots
             Loads satellite-detected active-fire points (NASA FIRMS) over your current map
             extent - useful for cross-checking Land Clearing Detection results, since
-            burning is a common land-clearing method. "All VIIRS" (the default satellite
-            source) queries 3 satellites and merges the results, since each one passes
-            over at a different time and can miss a fire the others catch; pick a single
-            source instead if you specifically want just one. Points are colored by
+            burning is a common land-clearing method. "All Sources" (the default satellite
+            source) queries 4 satellites (VIIRS x3 + MODIS) and merges the results, since
+            each one passes over at a different time and can miss a fire the others catch;
+            pick a single source instead if you specifically want just one. Points are colored by
             confidence - red (high), amber (low), orange (nominal) - instead of one flat
             color. Set a day range (1-10 days, ending today), click Load Fire Hotspots.
             Needs a free MAP_KEY from firms.modaps.eosdis.nasa.gov, entered once on the
@@ -434,9 +434,9 @@ namespace TreeCounterAddin
             NASA FIRMS Fire Hotspots
             Memuat titik api aktif dari satelit (NASA FIRMS) di sekitar extent map Anda
             saat ini - berguna untuk cross-check hasil Land Clearing Detection, karena
-            membakar adalah metode pembukaan lahan yang umum. "All VIIRS" (source default)
-            query 3 satelit sekaligus lalu digabung, karena tiap satelit lewat di jam
-            berbeda dan bisa melewatkan titik yang tertangkap satelit lain; pilih satu
+            membakar adalah metode pembukaan lahan yang umum. "All Sources" (source default)
+            query 4 satelit sekaligus (VIIRS x3 + MODIS) lalu digabung, karena tiap satelit
+            lewat di jam berbeda dan bisa melewatkan titik yang tertangkap satelit lain; pilih satu
             source spesifik kalau memang cuma butuh satu. Titik diwarnai sesuai confidence
             - merah (tinggi), kuning (rendah), oranye (nominal) - bukan satu warna flat.
             Atur rentang hari (1-10 hari, hingga hari ini), klik Load Fire Hotspots. Butuh

@@ -46,18 +46,18 @@ namespace TreeCounterAddin
             }
         }
 
-        // "All VIIRS" is the recommended default - ported from the sgis (SQIS) mobile app's
-        // own FirmsRefreshWorker, which found querying all three VIIRS satellites and
-        // merging the results catches meaningfully more real hotspots than any single one
-        // (each satellite's overpass time differs, so one alone can miss a fire the others
-        // catch). MODIS isn't in the merge - coarser 1km resolution and a numeric (not
-        // l/n/h) confidence scale would need separate handling to combine cleanly - it
-        // stays available as its own standalone pick below for a wider-net manual check.
-        private const string AllViirsSource = "All VIIRS (SNPP+NOAA20+NOAA21, recommended)";
+        // "All Sources" is the recommended default - each satellite passes over at a
+        // different time, so one alone can miss a fire the others catch. Originally ported
+        // as VIIRS-only (3 sats) from the sgis mobile app's FirmsRefreshWorker, but a real
+        // side-by-side test on this same real site (2026-08-26) found a genuine hotspot
+        // that only MODIS caught - all 3 VIIRS satellites missed it entirely that day - so
+        // MODIS is folded into the default merge too now, not just VIIRS.
+        private const string AllViirsSource = "All Sources (VIIRS x3 + MODIS, recommended)";
         private static readonly string[] ViirsSources = { "VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT" };
+        private static readonly string[] AllSources = ViirsSources.Append("MODIS_NRT").ToArray();
 
         public ObservableCollection<string> FirmsSources { get; } = new(
-            new[] { AllViirsSource }.Concat(ViirsSources).Append("MODIS_NRT"));
+            new[] { AllViirsSource }.Concat(AllSources));
 
         private string _selectedFirmsSource = AllViirsSource;
         public string SelectedFirmsSource
@@ -200,7 +200,7 @@ namespace TreeCounterAddin
 
                 var dayRange = Math.Clamp(FirmsDayRange, 1, 10);
                 var bbox = FormattableString.Invariant($"{extent.XMin},{extent.YMin},{extent.XMax},{extent.YMax}");
-                var sourcesToQuery = SelectedFirmsSource == AllViirsSource ? ViirsSources : new[] { SelectedFirmsSource };
+                var sourcesToQuery = SelectedFirmsSource == AllViirsSource ? AllSources : new[] { SelectedFirmsSource };
 
                 var rows = new List<FirmsHotspot>();
                 var failedSources = new List<string>();
@@ -330,6 +330,20 @@ namespace TreeCounterAddin
 
         private sealed record FirmsHotspot(double Lat, double Lon, string AcqDate, string AcqTime, string Confidence, double Frp, string Satellite, string DayNight);
 
+        // VIIRS' confidence column is already categorical (l/n/h) - MODIS' is a 0-100
+        // percentage instead. Bucketed here into the same l/n/h scale (FIRMS' own published
+        // MODIS tiers: <30 low, 30-80 nominal, >80 high) so BuildConfidenceRenderer's
+        // renderer can key on one field regardless of which source a row came from, instead
+        // of needing separate logic per source.
+        private static string NormalizeConfidence(string raw)
+        {
+            var trimmed = raw.Trim().ToLowerInvariant();
+            if (trimmed is "h" or "l" or "n") return trimmed;
+            if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+                return pct > 80 ? "h" : pct < 30 ? "l" : "n";
+            return "n";
+        }
+
         // FIRMS' CSV has no quoted/embedded-comma fields, so a plain split is enough - no
         // CSV library needed. Column order differs between VIIRS and MODIS sources, so
         // columns are looked up by header name instead of a fixed index.
@@ -356,7 +370,7 @@ namespace TreeCounterAddin
                 double.TryParse(Field(cols, frpIdx), NumberStyles.Float, CultureInfo.InvariantCulture, out var frp);
 
                 result.Add(new FirmsHotspot(lat, lon, Field(cols, dateIdx), Field(cols, timeIdx),
-                    Field(cols, confIdx), frp, Field(cols, satIdx), Field(cols, dnIdx)));
+                    NormalizeConfidence(Field(cols, confIdx)), frp, Field(cols, satIdx), Field(cols, dnIdx)));
             }
             return result;
         }
