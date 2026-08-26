@@ -394,7 +394,7 @@ namespace TreeCounterAddin
                 InsertWindRows(outputFc, points);
                 if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                     return;
-                newLayer.SetRenderer(BuildWindRenderer());
+                newLayer.SetRenderer(BuildWindRenderer(points));
             });
 
             var avgSpeed = points.Average(p => p.Speed);
@@ -402,41 +402,44 @@ namespace TreeCounterAddin
                 $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {points.Count} titik (panah arah asap ditambahkan).");
         }
 
-        // A rotation visual variable instead of a fixed symbol.Angle, so each of the grid's
-        // points can spin its own copy of the same triangle independently -
-        // SymbolRotationType.Geographic takes the field straight as a compass bearing
-        // (clockwise from north), matching SimpleMarkerStyle.Triangle's default
-        // north-pointing orientation - no arithmetic-angle conversion needed here, unlike
-        // CIMPointSymbol.Angle used for other single-point symbols in this add-in.
-        //
-        // A real run (2026-08-26) came back with every triangle pointing the same way
-        // regardless of position - VisualVariableInfo.Expression's plain "[Field]" string is
-        // documented as the legacy VBScript-expression form (ArcGIS.Core.xml: "used for
-        // Python or VBScript expressions"), which this runtime apparently doesn't evaluate
-        // for a freshly-constructed CIM renderer (likely round-trip-only, for reading old
-        // documents). Switched to Arcade via ValueExpressionInfo instead - what ArcGIS Pro's
-        // own Symbology pane generates when you configure rotation through the UI.
-        private static CIMSimpleRenderer BuildWindRenderer()
+        // Two earlier attempts at a shared symbol + CIMRotationVisualVariable (first
+        // VBScript-style "[Field]" expression syntax, then Arcade via
+        // ValueExpressionInfo/CIMExpressionInfo - the same form ArcGIS Pro's own Symbology
+        // pane generates) both came back with every triangle pointing the same way
+        // regardless of position, confirmed 2026-08-26 by checking the actual stored
+        // SmokeDirDeg values directly in the geodatabase (they genuinely varied - the bug
+        // was in the renderer, not the data). Sidesteps the whole data-driven-rotation
+        // mechanism instead: one CIMUniqueValueClass per grid point, keyed on OBJECTID
+        // (reliably 1..N in insertion order for a freshly-created feature class), each with
+        // its own symbol whose Angle is baked in at construction time - same
+        // CIMPointSymbol.Angle mechanism already used for other single-point symbols in
+        // this add-in, just built N times instead of relying on live field lookup.
+        private static CIMUniqueValueRenderer BuildWindRenderer(List<(double Lat, double Lon, double Speed, double SmokeDir)> points)
         {
-            var symbol = SymbolFactory.Instance.ConstructPointSymbol(
-                ColorFactory.Instance.CreateRGBColor(30, 90, 220), 10, SimpleMarkerStyle.Triangle);
-            return new CIMSimpleRenderer
+            CIMUniqueValueClass ClassFor(int objectId, double smokeDir)
             {
-                Symbol = symbol.MakeSymbolReference(),
-                VisualVariables = new CIMVisualVariable[]
+                // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
+                // compass bearing (clockwise from north) - standard conversion.
+                // SimpleMarkerStyle.Triangle points up (north/0 deg compass) at Angle=0.
+                var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
+                var symbol = SymbolFactory.Instance.ConstructPointSymbol(
+                    ColorFactory.Instance.CreateRGBColor(30, 90, 220), 10, SimpleMarkerStyle.Triangle);
+                symbol.Angle = mathAngle;
+                return new CIMUniqueValueClass
                 {
-                    new CIMRotationVisualVariable
+                    Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
+                    Symbol = symbol.MakeSymbolReference(),
+                };
+            }
+
+            return new CIMUniqueValueRenderer
+            {
+                Fields = new[] { "OBJECTID" },
+                Groups = new[]
+                {
+                    new CIMUniqueValueGroup
                     {
-                        VisualVariableInfoZ = new CIMVisualVariableInfo
-                        {
-                            ValueExpressionInfo = new CIMExpressionInfo
-                            {
-                                Expression = "$feature.SmokeDirDeg",
-                                Title = "Smoke direction",
-                                ReturnType = ExpressionReturnType.Numeric,
-                            },
-                        },
-                        RotationTypeZ = SymbolRotationType.Geographic,
+                        Classes = points.Select((p, i) => ClassFor(i + 1, p.SmokeDir)).ToArray(),
                     },
                 },
             };
