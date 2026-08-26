@@ -46,12 +46,20 @@ namespace TreeCounterAddin
             }
         }
 
-        public ObservableCollection<string> FirmsSources { get; } = new()
-        {
-            "VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "MODIS_NRT"
-        };
+        // "All VIIRS" is the recommended default - ported from the sgis (SQIS) mobile app's
+        // own FirmsRefreshWorker, which found querying all three VIIRS satellites and
+        // merging the results catches meaningfully more real hotspots than any single one
+        // (each satellite's overpass time differs, so one alone can miss a fire the others
+        // catch). MODIS isn't in the merge - coarser 1km resolution and a numeric (not
+        // l/n/h) confidence scale would need separate handling to combine cleanly - it
+        // stays available as its own standalone pick below for a wider-net manual check.
+        private const string AllViirsSource = "All VIIRS (SNPP+NOAA20+NOAA21, recommended)";
+        private static readonly string[] ViirsSources = { "VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT" };
 
-        private string _selectedFirmsSource = "VIIRS_SNPP_NRT";
+        public ObservableCollection<string> FirmsSources { get; } = new(
+            new[] { AllViirsSource }.Concat(ViirsSources).Append("MODIS_NRT"));
+
+        private string _selectedFirmsSource = AllViirsSource;
         public string SelectedFirmsSource
         {
             get => _selectedFirmsSource;
@@ -192,19 +200,38 @@ namespace TreeCounterAddin
 
                 var dayRange = Math.Clamp(FirmsDayRange, 1, 10);
                 var bbox = FormattableString.Invariant($"{extent.XMin},{extent.YMin},{extent.XMax},{extent.YMax}");
-                var url = $"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{FirmsMapKey}/{SelectedFirmsSource}/{bbox}/{dayRange}";
+                var sourcesToQuery = SelectedFirmsSource == AllViirsSource ? ViirsSources : new[] { SelectedFirmsSource };
 
-                var csv = await FirmsHttp.GetStringAsync(url, _firmsCts.Token);
-                // A bad key or bad params comes back as a plain-text one-liner (e.g.
-                // "Invalid MAP_KEY") instead of CSV - catch that before trying to parse it
-                // as data rows.
-                if (!csv.Contains(','))
+                var rows = new List<FirmsHotspot>();
+                var failedSources = new List<string>();
+                foreach (var source in sourcesToQuery)
                 {
-                    FirmsStatus = Tr($"FIRMS error: {csv.Trim()}", $"Error FIRMS: {csv.Trim()}");
+                    FirmsStatus = Tr($"Loading {source}...", $"Memuat {source}...");
+                    var url = $"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{FirmsMapKey}/{source}/{bbox}/{dayRange}";
+                    try
+                    {
+                        var csv = await FirmsHttp.GetStringAsync(url, _firmsCts.Token);
+                        // A bad key or bad params comes back as a plain-text one-liner (e.g.
+                        // "Invalid MAP_KEY") instead of CSV - catch that before trying to
+                        // parse it as data rows. One source erroring shouldn't sink a merged
+                        // query over several sources, so this only skips that one source
+                        // (same as sgis's FirmsRefreshWorker) rather than aborting outright -
+                        // it still aborts below if literally every source failed.
+                        if (!csv.Contains(',')) { failedSources.Add(source); continue; }
+                        rows.AddRange(ParseFirmsCsv(csv));
+                    }
+                    catch (Exception) when (sourcesToQuery.Length > 1)
+                    {
+                        failedSources.Add(source);
+                    }
+                }
+                if (rows.Count == 0 && failedSources.Count == sourcesToQuery.Length)
+                {
+                    FirmsStatus = Tr($"FIRMS error on every source queried ({string.Join(", ", failedSources)}).",
+                        $"Error FIRMS di semua source yang di-query ({string.Join(", ", failedSources)}).");
                     return;
                 }
 
-                var rows = ParseFirmsCsv(csv);
                 if (rows.Count == 0)
                 {
                     // Shows the actual lat/lon box that was searched - a genuine "no fires
@@ -232,13 +259,13 @@ namespace TreeCounterAddin
                     InsertFirmsRows(outputFc, rows);
                     if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                         return;
-                    var symbol = SymbolFactory.Instance.ConstructPointSymbol(
-                        ColorFactory.Instance.CreateRGBColor(255, 80, 0), 7, SimpleMarkerStyle.Circle);
-                    newLayer.SetRenderer(new CIMSimpleRenderer { Symbol = symbol.MakeSymbolReference() });
+                    newLayer.SetRenderer(BuildConfidenceRenderer());
                 });
 
-                FirmsStatus = Tr($"Done: {rows.Count} fire hotspot(s) loaded ({SelectedFirmsSource}, last {dayRange} day(s)).",
-                    $"Selesai: {rows.Count} titik panas dimuat ({SelectedFirmsSource}, {dayRange} hari terakhir).");
+                var failedNote = failedSources.Count == 0 ? "" :
+                    Tr($" ({string.Join(", ", failedSources)} failed, rest OK.)", $" ({string.Join(", ", failedSources)} gagal, sisanya OK.)");
+                FirmsStatus = Tr($"Done: {rows.Count} fire hotspot(s) loaded ({string.Join("+", sourcesToQuery)}, last {dayRange} day(s)).{failedNote}",
+                    $"Selesai: {rows.Count} titik panas dimuat ({string.Join("+", sourcesToQuery)}, {dayRange} hari terakhir).{failedNote}");
             }
             catch (OperationCanceledException)
             {
@@ -258,6 +285,47 @@ namespace TreeCounterAddin
                 _firmsCts = null;
                 IsLoadingFirms = false;
             }
+        }
+
+        // Same 3-tier confidence colors as the sgis (SQIS) mobile app's FirmsParser:
+        // high = red (most likely a real fire), low = amber (more likely noise/false
+        // detection), nominal/anything else = the original orange as a middle ground -
+        // a flat single color couldn't tell those apart, but VIIRS's own "l"/"n"/"h"
+        // confidence field already carries this distinction, it just wasn't used yet.
+        // MODIS's confidence field is a 0-100 number instead of l/n/h - it falls through
+        // to the default (nominal) color here, since MODIS isn't in the merged/default
+        // query path anyway (see AllViirsSource above).
+        private static CIMUniqueValueRenderer BuildConfidenceRenderer()
+        {
+            CIMSymbolReference Dot(int r, int g, int b) => SymbolFactory.Instance
+                .ConstructPointSymbol(ColorFactory.Instance.CreateRGBColor(r, g, b), 7, SimpleMarkerStyle.Circle)
+                .MakeSymbolReference();
+
+            CIMUniqueValueClass Class(string label, string value, CIMSymbolReference symbol) => new()
+            {
+                Label = label,
+                Symbol = symbol,
+                Values = new[] { new CIMUniqueValue { FieldValues = new[] { value } } },
+            };
+
+            return new CIMUniqueValueRenderer
+            {
+                Fields = new[] { "Confidence" },
+                Groups = new[]
+                {
+                    new CIMUniqueValueGroup
+                    {
+                        Classes = new[]
+                        {
+                            Class("High confidence", "h", Dot(255, 51, 0)),
+                            Class("Low confidence", "l", Dot(255, 170, 0)),
+                        },
+                    },
+                },
+                UseDefaultSymbol = true,
+                DefaultLabel = "Nominal confidence",
+                DefaultSymbol = Dot(255, 102, 0),
+            };
         }
 
         private sealed record FirmsHotspot(double Lat, double Lon, string AcqDate, string AcqTime, string Confidence, double Frp, string Satellite, string DayNight);

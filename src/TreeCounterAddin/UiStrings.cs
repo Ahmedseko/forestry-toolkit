@@ -179,8 +179,8 @@ namespace TreeCounterAddin
             // ---- NASA FIRMS Fire Hotspots ----
             ["Firms_Header"] = ("NASA FIRMS Fire Hotspots", "NASA FIRMS Fire Hotspots"),
             ["Firms_Hint"] = (
-                "Loads satellite-detected fire hotspots (NASA FIRMS) over the current map extent - cross-check against Land Clearing Detection results, since burning is a common land-clearing method. Needs a free MAP_KEY on the Settings tab.",
-                "Memuat titik panas dari satelit (NASA FIRMS) di sekitar extent map saat ini - cocok untuk cross-check hasil Land Clearing Detection, karena membakar adalah metode pembukaan lahan yang umum. Butuh MAP_KEY gratis di tab Settings."),
+                "Loads satellite-detected fire hotspots (NASA FIRMS) over the current map extent - cross-check against Land Clearing Detection results, since burning is a common land-clearing method. \"All VIIRS\" (default) queries 3 satellites and merges results - one alone can miss a fire the others catch. Points are colored by confidence (red=high, amber=low, orange=nominal). Needs a free MAP_KEY on the Settings tab.",
+                "Memuat titik panas dari satelit (NASA FIRMS) di sekitar extent map saat ini - cocok untuk cross-check hasil Land Clearing Detection, karena membakar adalah metode pembukaan lahan yang umum. \"All VIIRS\" (default) query 3 satelit sekaligus digabung - satu satelit saja bisa melewatkan titik yang tertangkap satelit lain. Titik diwarnai sesuai confidence (merah=tinggi, kuning=rendah, oranye=nominal). Butuh MAP_KEY gratis di tab Settings."),
             ["Firms_SourceLabel"] = ("Satellite source", "Sumber satelit"),
             ["Firms_DayRangeLabel"] = ("Day range (1-10, ending today)", "Rentang hari (1-10, hingga hari ini)"),
             ["Firms_Load"] = ("Load Fire Hotspots", "Load Fire Hotspots"),
