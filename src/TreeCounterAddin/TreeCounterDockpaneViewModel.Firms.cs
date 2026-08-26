@@ -501,7 +501,7 @@ namespace TreeCounterAddin
                 // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
                 // compass bearing (clockwise from north) - standard conversion.
                 var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                var marker = SymbolFactory.Instance.ConstructMarker(color, 9, SimpleMarkerStyle.Rod);
+                var marker = SymbolFactory.Instance.ConstructMarker(color, 9, SimpleMarkerStyle.Triangle);
                 var symbol = new CIMPointSymbol { SymbolLayers = new CIMSymbolLayer[] { marker }, Angle = mathAngle };
                 return new CIMUniqueValueClass
                 {
