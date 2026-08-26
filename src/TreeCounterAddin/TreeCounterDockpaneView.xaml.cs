@@ -25,6 +25,7 @@ namespace TreeCounterAddin
                     // internally. Push the already-loaded value in now.
                     _updatingFromViewModel = true;
                     ApiKeyBox.Password = newVm.ApiKey ?? "";
+                    FirmsMapKeyBox.Password = newVm.FirmsMapKey ?? "";
                     _updatingFromViewModel = false;
                 }
             };
@@ -40,19 +41,34 @@ namespace TreeCounterAddin
                 vm.ApiKey = ApiKeyBox.Password;
         }
 
-        // The ViewModel also writes ApiKey itself (e.g. restoring a per-provider saved
-        // key when SelectedProvider changes) - since the PasswordBox can't be bound,
-        // that write needs to be pushed into the box by hand too, or the box would still
-        // show the previous provider's key even though the ViewModel already moved on.
+        // Same reasoning as ApiKeyBox_PasswordChanged above, for the NASA FIRMS MAP_KEY.
+        private void FirmsMapKeyBox_PasswordChanged(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_updatingFromViewModel) return;
+            if (DataContext is TreeCounterDockpaneViewModel vm)
+                vm.FirmsMapKey = FirmsMapKeyBox.Password;
+        }
+
+        // The ViewModel also writes ApiKey/FirmsMapKey itself (e.g. restoring a per-
+        // provider saved key when SelectedProvider changes) - since PasswordBoxes can't be
+        // bound, that write needs to be pushed into the box by hand too, or the box would
+        // still show the old value even though the ViewModel already moved on.
         private void ViewModel_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(TreeCounterDockpaneViewModel.ApiKey)) return;
             if (DataContext is not TreeCounterDockpaneViewModel vm) return;
-            if (ApiKeyBox.Password == vm.ApiKey) return;
 
-            _updatingFromViewModel = true;
-            ApiKeyBox.Password = vm.ApiKey ?? "";
-            _updatingFromViewModel = false;
+            if (e.PropertyName == nameof(TreeCounterDockpaneViewModel.ApiKey) && ApiKeyBox.Password != vm.ApiKey)
+            {
+                _updatingFromViewModel = true;
+                ApiKeyBox.Password = vm.ApiKey ?? "";
+                _updatingFromViewModel = false;
+            }
+            else if (e.PropertyName == nameof(TreeCounterDockpaneViewModel.FirmsMapKey) && FirmsMapKeyBox.Password != vm.FirmsMapKey)
+            {
+                _updatingFromViewModel = true;
+                FirmsMapKeyBox.Password = vm.FirmsMapKey ?? "";
+                _updatingFromViewModel = false;
+            }
         }
     }
 }

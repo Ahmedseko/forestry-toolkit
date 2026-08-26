@@ -35,6 +35,8 @@ namespace TreeCounterAddin
                 _apiKeysByProvider[kv.Key] = kv.Value;
             if (_apiKeysByProvider.TryGetValue(_selectedProvider, out var savedKey))
                 _apiKey = savedKey; // set the backing field directly - no save-on-load, no UI to notify yet
+            if (_apiKeysByProvider.TryGetValue("firms", out var savedFirmsKey))
+                _firmsMapKey = savedFirmsKey;
 
             // Same reasoning as the API keys above - set backing fields directly (declared in
             // the Fishnet/ExcelImport/Biomass partial files, reachable here since partial

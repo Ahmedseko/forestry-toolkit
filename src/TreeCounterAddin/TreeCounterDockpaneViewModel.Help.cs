@@ -183,6 +183,13 @@ namespace TreeCounterAddin
             felled) and "New" (green - trees in the new run with no match in the old one,
             likely new growth or previously missed).
 
+            NASA FIRMS Fire Hotspots
+            Loads satellite-detected active-fire points (NASA FIRMS) over your current map
+            extent - useful for cross-checking Land Clearing Detection results, since
+            burning is a common land-clearing method. Pick a satellite source and a day
+            range (1-10 days, ending today), click Load Fire Hotspots. Needs a free
+            MAP_KEY from firms.modaps.eosdis.gov, entered once on the Settings tab.
+
             Sliver Polygon Detection
             Automatically finds unusually small or unusually thin/elongated polygons in a
             polygon layer - no manual size threshold to set, it calibrates itself against
@@ -418,6 +425,13 @@ namespace TreeCounterAddin
             di hasil baru, kemungkinan sudah ditebang) dan "New" (hijau - pohon di hasil
             baru tanpa pasangan di hasil lama, kemungkinan tumbuh baru atau sebelumnya
             terlewat).
+
+            NASA FIRMS Fire Hotspots
+            Memuat titik api aktif dari satelit (NASA FIRMS) di sekitar extent map Anda
+            saat ini - berguna untuk cross-check hasil Land Clearing Detection, karena
+            membakar adalah metode pembukaan lahan yang umum. Pilih sumber satelit dan
+            rentang hari (1-10 hari, hingga hari ini), klik Load Fire Hotspots. Butuh
+            MAP_KEY gratis dari firms.modaps.eosdis.gov, diisi sekali di tab Settings.
 
             Sliver Polygon Detection
             Otomatis mencari poligon yang ukurannya jauh lebih kecil atau bentuknya jauh

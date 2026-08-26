@@ -176,6 +176,15 @@ namespace TreeCounterAddin
             ["CompareChanges_MatchDistLabel"] = ("Match distance (meters)", "Jarak pencocokan (meter)"),
             ["CompareChanges_Compare"] = ("Compare", "Compare"),
 
+            // ---- NASA FIRMS Fire Hotspots ----
+            ["Firms_Header"] = ("NASA FIRMS Fire Hotspots", "NASA FIRMS Fire Hotspots"),
+            ["Firms_Hint"] = (
+                "Loads satellite-detected fire hotspots (NASA FIRMS) over the current map extent - cross-check against Land Clearing Detection results, since burning is a common land-clearing method. Needs a free MAP_KEY on the Settings tab.",
+                "Memuat titik panas dari satelit (NASA FIRMS) di sekitar extent map saat ini - cocok untuk cross-check hasil Land Clearing Detection, karena membakar adalah metode pembukaan lahan yang umum. Butuh MAP_KEY gratis di tab Settings."),
+            ["Firms_SourceLabel"] = ("Satellite source", "Sumber satelit"),
+            ["Firms_DayRangeLabel"] = ("Day range (1-10, ending today)", "Rentang hari (1-10, hingga hari ini)"),
+            ["Firms_Load"] = ("Load Fire Hotspots", "Load Fire Hotspots"),
+
             // ---- Sliver Polygon Detection ----
             ["Sliver_Header"] = ("Sliver Polygon Detection", "Sliver Polygon Detection"),
             ["Sliver_Hint"] = (
@@ -269,6 +278,11 @@ namespace TreeCounterAddin
             ["AiValidation_ProviderLabel"] = ("Provider", "Provider"),
             ["AiValidation_ModelLabel"] = ("Model", "Model"),
             ["AiValidation_TestKey"] = ("Test Key", "Test Key"),
+
+            ["FirmsSettings_Header"] = ("NASA FIRMS Fire Alerts", "NASA FIRMS Fire Alerts"),
+            ["FirmsSettings_Hint"] = (
+                "MAP_KEY for the NASA FIRMS Fire Hotspots feature on the Analyze tab - free, get one at firms.modaps.eosdis.gov. Stored encrypted on this computer only.",
+                "MAP_KEY untuk fitur Fire Hotspots NASA FIRMS di tab Analyze - gratis, dapatkan di firms.modaps.eosdis.gov. Disimpan terenkripsi hanya di komputer ini."),
 
             // ---- About tab ----
             ["About_TechHeader"] = ("Technology", "Teknologi"),
