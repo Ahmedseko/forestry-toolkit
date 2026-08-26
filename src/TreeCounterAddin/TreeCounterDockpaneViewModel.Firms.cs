@@ -335,16 +335,21 @@ namespace TreeCounterAddin
             };
         }
 
-        // Open-Meteo (free, no API key - unlike FIRMS) current wind across a grid of points
-        // spanning the queried extent, each drawn as its own rotated triangle - a real
-        // request (2026-08-26) after a single center-point arrow wasn't enough of a "wind
-        // field" feel. True curved streamlines (the original reference image) would need a
-        // gridded vector field plus a streamline-integration algorithm - out of scope, this
-        // gives a similar at-a-glance field-of-arrows read with a fraction of the effort.
-        // One HTTP call for the whole grid - Open-Meteo accepts comma-separated lat/lon
-        // lists and returns a JSON array (one element per location) instead of a single
-        // object, so this isn't N separate requests.
-        private const int WindGridSize = 4;
+        // Open-Meteo (free, no API key - unlike FIRMS) current wind sampled on a regular
+        // grid spanning the queried extent, then traced into real streamlines - bilinear
+        // interpolation of the sampled (u,v) wind vectors + 4th-order Runge-Kutta
+        // integration, the standard method real tools use for this (confirmed against
+        // leaflet-velocity/windy.js - the engine behind Windy.com - and general vector-field
+        // visualization literature before building this, 2026-08-26). Two earlier attempts
+        // (a per-point rotated symbol, then an arbitrary decorative bow on each straight
+        // line) both drew a direction at each point in isolation; this instead traces how a
+        // particle would actually move through the *interpolated* field, so a line's
+        // curvature responds to how wind direction actually varies across the sampled area,
+        // not an artistic flourish. One HTTP call for the whole grid - Open-Meteo accepts
+        // comma-separated lat/lon lists and returns a JSON array (one element per location)
+        // instead of a single object, so this isn't N separate requests.
+        private const int WindGridSize = 5;
+        private const int StreamlineSteps = 16;
 
         private async Task<string> AddWindGridAsync(Map map, Envelope extentWgs84, Project project, string stamp)
         {
@@ -369,44 +374,124 @@ namespace TreeCounterAddin
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.ValueKind != JsonValueKind.Array) return "";
 
-            var points = new List<(double Lat, double Lon, double Speed, double SmokeDir)>();
-            int i = 0;
+            // Grid alignment matters for the interpolator below (index = iy*WindGridSize+ix),
+            // so this fills a fixed-size array by position rather than only appending
+            // successfully-parsed entries - a single missing/malformed grid cell aborts the
+            // whole layer (soft-fail already wraps this call) instead of silently shifting
+            // every later cell into the wrong slot.
+            var uGrid = new double[WindGridSize * WindGridSize];
+            var vGrid = new double[WindGridSize * WindGridSize];
+            double totalSpeed = 0;
+            int idx = 0;
             foreach (var el in doc.RootElement.EnumerateArray())
             {
-                if (el.TryGetProperty("current", out var current) &&
-                    current.TryGetProperty("wind_speed_10m", out var speedEl) &&
-                    current.TryGetProperty("wind_direction_10m", out var dirEl))
-                {
-                    // Open-Meteo's wind_direction is meteorological convention - the
-                    // direction the wind blows FROM - so smoke drifts the opposite way.
-                    var smokeDir = (dirEl.GetDouble() + 180.0) % 360.0;
-                    points.Add((lats[i], lons[i], speedEl.GetDouble(), smokeDir));
-                }
-                i++;
+                if (idx >= uGrid.Length) break;
+                if (!el.TryGetProperty("current", out var current) ||
+                    !current.TryGetProperty("wind_speed_10m", out var speedEl) ||
+                    !current.TryGetProperty("wind_direction_10m", out var dirEl))
+                    return "";
+                var speed = speedEl.GetDouble();
+                // Open-Meteo's wind_direction is meteorological convention - the direction
+                // the wind blows FROM - so smoke drifts the opposite way (+180). Stored as
+                // Cartesian (u,v) - east/north components - not the raw bearing, since
+                // bilinear-averaging angles directly is wrong close to the 0/360 wrap
+                // (averaging 359 deg and 1 deg naively gives 180, the opposite direction);
+                // averaging components and re-deriving the angle avoids that.
+                var smokeDirRad = ((dirEl.GetDouble() + 180.0) % 360.0) * Math.PI / 180.0;
+                uGrid[idx] = speed * Math.Sin(smokeDirRad);
+                vGrid[idx] = speed * Math.Cos(smokeDirRad);
+                totalSpeed += speed;
+                idx++;
             }
-            if (points.Count == 0) return "";
+            if (idx < uGrid.Length) return "";
+            var avgSpeed = totalSpeed / uGrid.Length;
+
+            var lonStepDeg = (extentWgs84.XMax - extentWgs84.XMin) / WindGridSize;
+            var latStepDeg = (extentWgs84.YMax - extentWgs84.YMin) / WindGridSize;
+
+            // Bilinear-interpolates the sampled (u,v) grid at an arbitrary lon/lat, then
+            // returns a unit direction vector in degrees-per-step terms (longitude scaled by
+            // 1/cos(lat), since a degree of longitude covers less real-world distance away
+            // from the equator) - normalized so integration step size is controlled purely
+            // by stepDeg below, independent of the field's own km/h magnitude.
+            (double dLon, double dLat) SampleUnitDir(double lon, double lat)
+            {
+                var fx = Math.Clamp((lon - extentWgs84.XMin) / lonStepDeg - 0.5, 0, WindGridSize - 1.001);
+                var fy = Math.Clamp((lat - extentWgs84.YMin) / latStepDeg - 0.5, 0, WindGridSize - 1.001);
+                int ix0 = (int)fx, iy0 = (int)fy;
+                int ix1 = Math.Min(ix0 + 1, WindGridSize - 1), iy1 = Math.Min(iy0 + 1, WindGridSize - 1);
+                double tx = fx - ix0, ty = fy - iy0;
+
+                double Blend(double[] grid) =>
+                    (1 - tx) * (1 - ty) * grid[iy0 * WindGridSize + ix0] + tx * (1 - ty) * grid[iy0 * WindGridSize + ix1] +
+                    (1 - tx) * ty * grid[iy1 * WindGridSize + ix0] + tx * ty * grid[iy1 * WindGridSize + ix1];
+
+                var u = Blend(uGrid);
+                var v = Blend(vGrid);
+                var mag = Math.Sqrt(u * u + v * v);
+                if (mag < 1e-6) return (0, 0);
+                var latRad = lat * Math.PI / 180.0;
+                return ((u / mag) / Math.Max(Math.Cos(latRad), 0.1), v / mag);
+            }
+
+            // Classic 4th-order Runge-Kutta - the standard integrator for this (low error,
+            // low cost, per the vector-field-visualization literature checked before
+            // building this) - traces where a particle dropped at (lon,lat) would actually
+            // drift through the interpolated field, step by step, rather than following one
+            // single direction sample the whole way.
+            MapPoint[] TraceStreamline(double lon, double lat, double stepDeg)
+            {
+                var path = new MapPoint[StreamlineSteps + 1];
+                path[0] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
+                for (int s = 0; s < StreamlineSteps; s++)
+                {
+                    var k1 = SampleUnitDir(lon, lat);
+                    var k2 = SampleUnitDir(lon + stepDeg / 2 * k1.dLon, lat + stepDeg / 2 * k1.dLat);
+                    var k3 = SampleUnitDir(lon + stepDeg / 2 * k2.dLon, lat + stepDeg / 2 * k2.dLat);
+                    var k4 = SampleUnitDir(lon + stepDeg * k3.dLon, lat + stepDeg * k3.dLat);
+                    lon += stepDeg / 6.0 * (k1.dLon + 2 * k2.dLon + 2 * k3.dLon + k4.dLon);
+                    lat += stepDeg / 6.0 * (k1.dLat + 2 * k2.dLat + 2 * k3.dLat + k4.dLat);
+                    path[s + 1] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
+                }
+                return path;
+            }
 
             var outputFc = Path.Combine(project.DefaultGeodatabasePath, $"WindDirection_{stamp}");
             if (!await CreateWindFeatureClassAsync(outputFc, SpatialReferences.WGS84)) return "";
 
-            // Line length as a fraction of the grid spacing, so arrows don't overlap their
-            // neighbors - independent of X/Y since lat/lon degrees aren't equal real-world
-            // distances (longitude degrees shrink toward the poles).
-            var lonStepDeg = (extentWgs84.XMax - extentWgs84.XMin) / WindGridSize;
-            var latStepDeg = (extentWgs84.YMax - extentWgs84.YMin) / WindGridSize;
-            var lineLenDeg = Math.Min(lonStepDeg, latStepDeg) * 0.4;
-
+            // Total streamline length as a fraction of grid spacing, scaled 40-100% by that
+            // seed's own local speed (so faster wind visibly draws a longer line), same
+            // reasoning as the earlier fixed-line version - just now spread across many
+            // short RK4 steps instead of one straight/bowed segment.
+            var baseLenDeg = Math.Min(lonStepDeg, latStepDeg) * 0.9;
             await QueuedTask.Run(() =>
             {
-                InsertWindLines(outputFc, points, lineLenDeg);
+                using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(project.DefaultGeodatabasePath)));
+                using var featureClass = geodatabase.OpenDataset<ArcGIS.Core.Data.FeatureClass>(Path.GetFileName(outputFc));
+                using var insertCursor = featureClass.CreateInsertCursor();
+                var shapeField = featureClass.GetDefinition().GetShapeField();
+                for (int s = 0; s < uGrid.Length; s++)
+                {
+                    var speed = Math.Sqrt(uGrid[s] * uGrid[s] + vGrid[s] * vGrid[s]);
+                    var lenScale = Math.Clamp(speed / 20.0, 0.4, 1.0);
+                    var stepDeg = (baseLenDeg * lenScale) / StreamlineSteps;
+                    var path = TraceStreamline(lons[s], lats[s], stepDeg);
+
+                    using var rowBuffer = featureClass.CreateRowBuffer();
+                    rowBuffer[shapeField] = PolylineBuilderEx.CreatePolyline(path, SpatialReferences.WGS84);
+                    rowBuffer["WindSpeedKmh"] = speed;
+                    rowBuffer["SmokeDirDeg"] = (Math.Atan2(uGrid[s], vGrid[s]) * 180.0 / Math.PI + 360.0) % 360.0;
+                    insertCursor.Insert(rowBuffer);
+                }
+                insertCursor.Flush();
+
                 if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                     return;
                 newLayer.SetRenderer(new CIMSimpleRenderer { Symbol = BuildWindLineSymbol().MakeSymbolReference() });
             });
 
-            var avgSpeed = points.Average(p => p.Speed);
-            return Tr($" Wind: ~{avgSpeed:F0} km/h avg across {points.Count} point(s) (smoke drift arrows added).",
-                $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {points.Count} titik (panah arah asap ditambahkan).");
+            return Tr($" Wind: ~{avgSpeed:F0} km/h avg across {uGrid.Length} streamline(s) (RK4-traced, smoke drift).",
+                $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {uGrid.Length} streamline (ditelusuri RK4, arah asap).");
         }
 
         // Two earlier attempts at rotating a POINT symbol per feature (a data-driven
@@ -452,64 +537,6 @@ namespace TreeCounterAddin
             return true;
         }
 
-        // Must run on the MCT (QueuedTask). Each line runs from the grid point toward the
-        // smoke-drift bearing - a flat-plane offset (fine at this scale), longitude step
-        // divided by cos(latitude) since a degree of longitude covers less real-world
-        // distance away from the equator.
-        private static void InsertWindLines(string fc, List<(double Lat, double Lon, double Speed, double SmokeDir)> points, double lineLenDeg)
-        {
-            using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(Path.GetDirectoryName(fc))));
-            using var featureClass = geodatabase.OpenDataset<ArcGIS.Core.Data.FeatureClass>(Path.GetFileName(fc));
-            using var insertCursor = featureClass.CreateInsertCursor();
-            var shapeField = featureClass.GetDefinition().GetShapeField();
-            foreach (var p in points)
-            {
-                // Scaled by speed (40-100% of the base length) instead of every line being
-                // identical regardless of actual wind speed - a real report (2026-08-26)
-                // found the uniform grid look "stiff/unnatural"; faster wind now reads as a
-                // visibly longer line, some natural variation across the grid instead of a
-                // mechanically uniform one. 20 km/h treated as "fast" - clamped, not
-                // normalized against this run's own min/max, so a single outlier point can't
-                // squash every other line down to the same length.
-                var lenScale = Math.Clamp(p.Speed / 20.0, 0.4, 1.0);
-                var thisLineLenDeg = lineLenDeg * lenScale;
-                var bearingRad = p.SmokeDir * Math.PI / 180.0;
-                var latRad = p.Lat * Math.PI / 180.0;
-                var dLat = thisLineLenDeg * Math.Cos(bearingRad);
-                var dLon = thisLineLenDeg * Math.Sin(bearingRad) / Math.Max(Math.Cos(latRad), 0.1);
-                var endLon = p.Lon + dLon;
-                var endLat = p.Lat + dLat;
-
-                // Decorative bow, not a real streamline (still out of scope - see
-                // AddWindGridAsync's own comment) - bends each straight line gently to one
-                // side via a quadratic Bezier sampled into a many-point polyline, so it
-                // reads as "flowing" instead of ruler-straight. Same rotation direction
-                // (+90 deg) for every line, not randomized per line, so the whole grid bends
-                // the same way rather than looking chaotic.
-                var perpBearingRad = bearingRad + Math.PI / 2.0;
-                var bowLenDeg = thisLineLenDeg * 0.18;
-                var midLon = (p.Lon + endLon) / 2.0 + bowLenDeg * Math.Sin(perpBearingRad) / Math.Max(Math.Cos(latRad), 0.1);
-                var midLat = (p.Lat + endLat) / 2.0 + bowLenDeg * Math.Cos(perpBearingRad);
-
-                const int curveSteps = 10;
-                var curvePoints = new MapPoint[curveSteps + 1];
-                for (int s = 0; s <= curveSteps; s++)
-                {
-                    var t = (double)s / curveSteps;
-                    var u = 1.0 - t;
-                    var lon = u * u * p.Lon + 2 * u * t * midLon + t * t * endLon;
-                    var lat = u * u * p.Lat + 2 * u * t * midLat + t * t * endLat;
-                    curvePoints[s] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
-                }
-
-                using var rowBuffer = featureClass.CreateRowBuffer();
-                rowBuffer[shapeField] = PolylineBuilderEx.CreatePolyline(curvePoints, SpatialReferences.WGS84);
-                rowBuffer["WindSpeedKmh"] = p.Speed;
-                rowBuffer["SmokeDirDeg"] = p.SmokeDir;
-                insertCursor.Insert(rowBuffer);
-            }
-            insertCursor.Flush();
-        }
 
         private sealed record FirmsHotspot(double Lat, double Lon, string AcqDate, string AcqTime, string Confidence, double Frp, string Satellite, string DayNight);
 
