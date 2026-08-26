@@ -293,16 +293,31 @@ namespace TreeCounterAddin
         // a plain count-density read is what the reference image showed).
         // AutoAdjustPixelIntensity = true instead of a fixed MaxPixelIntensity - lets the
         // renderer self-scale to whatever's actually visible rather than needing this code
-        // to pre-compute a density statistic across the loaded points. ColorScheme left
-        // unset - Esri's own default heat-map ramp (yellow-orange-red) already matches the
-        // reference image, no custom CIMColorRamp needed.
-        private static CIMHeatMapRenderer BuildHeatMapRenderer() => new()
+        // to pre-compute a density statistic across the loaded points.
+        private static CIMHeatMapRenderer BuildHeatMapRenderer()
         {
-            Field = "",
-            Radius = 15,
-            RendererQuality = 8,
-            AutoAdjustPixelIntensity = true,
-        };
+            // Leaving ColorScheme unset turned out to fall back to grayscale, not the
+            // red/orange/yellow "hot" look expected (confirmed 2026-08-26 - a real run came
+            // back black-and-white) - built explicitly instead of relying on an assumed
+            // default. Two linear segments (dark red->orange, orange->yellow) chained via
+            // CIMMultipartColorRamp for the classic heat-map gradient.
+            CIMColor Rgb(int r, int g, int b) => ColorFactory.Instance.CreateRGBColor(r, g, b);
+            var redToOrange = new CIMLinearContinuousColorRamp { FromColor = Rgb(128, 0, 0), ToColor = Rgb(255, 140, 0) };
+            var orangeToYellow = new CIMLinearContinuousColorRamp { FromColor = Rgb(255, 140, 0), ToColor = Rgb(255, 255, 0) };
+
+            return new CIMHeatMapRenderer
+            {
+                Field = "",
+                Radius = 15,
+                RendererQuality = 8,
+                AutoAdjustPixelIntensity = true,
+                ColorScheme = new CIMMultipartColorRamp
+                {
+                    ColorRamps = new CIMColorRamp[] { redToOrange, orangeToYellow },
+                    Weights = new[] { 0.5, 0.5 },
+                },
+            };
+        }
 
         private sealed record FirmsHotspot(double Lat, double Lon, string AcqDate, string AcqTime, string Confidence, double Frp, string Satellite, string DayNight);
 
