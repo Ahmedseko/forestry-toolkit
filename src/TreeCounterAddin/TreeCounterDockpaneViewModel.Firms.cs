@@ -268,9 +268,7 @@ namespace TreeCounterAddin
                 var windNote = "";
                 try
                 {
-                    var centerLat = rows.Average(r => r.Lat);
-                    var centerLon = rows.Average(r => r.Lon);
-                    windNote = await AddWindArrowAsync(map, centerLat, centerLon, project, stamp);
+                    windNote = await AddWindGridAsync(map, extent, project, stamp);
                 }
                 catch (Exception) { /* soft-fail, see comment above */ }
 
@@ -337,45 +335,95 @@ namespace TreeCounterAddin
             };
         }
 
-        // Open-Meteo (free, no API key - unlike FIRMS) current wind at the centroid of the
-        // loaded hotspots, drawn as one rotated triangle showing where smoke would drift.
-        // Ported from the sgis (SQIS) mobile app's WindArrowGeoJson.kt concept (one arrow
-        // per weather check, not per hotspot - wind is roughly uniform over a small area,
-        // and a triangle per fire point would just be visual noise), adapted to a real CIM
-        // point symbol instead of a GeoJSON marker-color hack.
-        private async Task<string> AddWindArrowAsync(Map map, double lat, double lon, Project project, string stamp)
+        // Open-Meteo (free, no API key - unlike FIRMS) current wind across a grid of points
+        // spanning the queried extent, each drawn as its own rotated triangle - a real
+        // request (2026-08-26) after a single center-point arrow wasn't enough of a "wind
+        // field" feel. True curved streamlines (the original reference image) would need a
+        // gridded vector field plus a streamline-integration algorithm - out of scope, this
+        // gives a similar at-a-glance field-of-arrows read with a fraction of the effort.
+        // One HTTP call for the whole grid - Open-Meteo accepts comma-separated lat/lon
+        // lists and returns a JSON array (one element per location) instead of a single
+        // object, so this isn't N separate requests.
+        private const int WindGridSize = 4;
+
+        private async Task<string> AddWindGridAsync(Map map, Envelope extentWgs84, Project project, string stamp)
         {
-            var url = FormattableString.Invariant(
-                $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh");
+            var lats = new List<double>();
+            var lons = new List<double>();
+            for (int iy = 0; iy < WindGridSize; iy++)
+            {
+                var lat = extentWgs84.YMin + (extentWgs84.YMax - extentWgs84.YMin) * (iy + 0.5) / WindGridSize;
+                for (int ix = 0; ix < WindGridSize; ix++)
+                {
+                    var lon = extentWgs84.XMin + (extentWgs84.XMax - extentWgs84.XMin) * (ix + 0.5) / WindGridSize;
+                    lats.Add(lat);
+                    lons.Add(lon);
+                }
+            }
+
+            var latParam = string.Join(",", lats.Select(v => v.ToString("F4", CultureInfo.InvariantCulture)));
+            var lonParam = string.Join(",", lons.Select(v => v.ToString("F4", CultureInfo.InvariantCulture)));
+            var url = $"https://api.open-meteo.com/v1/forecast?latitude={latParam}&longitude={lonParam}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh";
+
             var json = await FirmsHttp.GetStringAsync(url);
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("current", out var current)) return "";
-            var windSpeed = current.GetProperty("wind_speed_10m").GetDouble();
-            var windDir = current.GetProperty("wind_direction_10m").GetDouble();
-            // Open-Meteo's wind_direction is meteorological convention - the direction the
-            // wind blows FROM - so smoke drifts the opposite way, +180.
-            var smokeDir = (windDir + 180.0) % 360.0;
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return "";
+
+            var points = new List<(double Lat, double Lon, double Speed, double SmokeDir)>();
+            int i = 0;
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.TryGetProperty("current", out var current) &&
+                    current.TryGetProperty("wind_speed_10m", out var speedEl) &&
+                    current.TryGetProperty("wind_direction_10m", out var dirEl))
+                {
+                    // Open-Meteo's wind_direction is meteorological convention - the
+                    // direction the wind blows FROM - so smoke drifts the opposite way.
+                    var smokeDir = (dirEl.GetDouble() + 180.0) % 360.0;
+                    points.Add((lats[i], lons[i], speedEl.GetDouble(), smokeDir));
+                }
+                i++;
+            }
+            if (points.Count == 0) return "";
 
             var outputFc = Path.Combine(project.DefaultGeodatabasePath, $"WindDirection_{stamp}");
             if (!await CreateWindFeatureClassAsync(outputFc, SpatialReferences.WGS84)) return "";
 
             await QueuedTask.Run(() =>
             {
-                InsertWindRow(outputFc, lat, lon, windSpeed, windDir);
+                InsertWindRows(outputFc, points);
                 if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                     return;
-                // CIM point symbol Angle is arithmetic (counterclockwise from east), not
-                // compass bearing (clockwise from north) - standard conversion between the
-                // two. SimpleMarkerStyle.Triangle points up (north/0 deg compass) at Angle=0.
-                var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                var symbol = SymbolFactory.Instance.ConstructPointSymbol(
-                    ColorFactory.Instance.CreateRGBColor(30, 90, 220), 22, SimpleMarkerStyle.Triangle);
-                symbol.Angle = mathAngle;
-                newLayer.SetRenderer(new CIMSimpleRenderer { Symbol = symbol.MakeSymbolReference() });
+                newLayer.SetRenderer(BuildWindRenderer());
             });
 
-            return Tr($" Wind: {windSpeed:F0} km/h (smoke drift arrow added).",
-                $" Angin: {windSpeed:F0} km/h (panah arah asap ditambahkan).");
+            var avgSpeed = points.Average(p => p.Speed);
+            return Tr($" Wind: ~{avgSpeed:F0} km/h avg across {points.Count} point(s) (smoke drift arrows added).",
+                $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {points.Count} titik (panah arah asap ditambahkan).");
+        }
+
+        // A rotation visual variable instead of a fixed symbol.Angle, so each of the grid's
+        // points can spin its own copy of the same triangle independently -
+        // SymbolRotationType.Geographic takes the SmokeDirDeg field straight as a compass
+        // bearing (clockwise from north), matching SimpleMarkerStyle.Triangle's default
+        // north-pointing orientation - no arithmetic-angle conversion needed here, unlike
+        // CIMPointSymbol.Angle used for other single-point symbols in this add-in.
+        private static CIMSimpleRenderer BuildWindRenderer()
+        {
+            var symbol = SymbolFactory.Instance.ConstructPointSymbol(
+                ColorFactory.Instance.CreateRGBColor(30, 90, 220), 16, SimpleMarkerStyle.Triangle);
+            return new CIMSimpleRenderer
+            {
+                Symbol = symbol.MakeSymbolReference(),
+                VisualVariables = new CIMVisualVariable[]
+                {
+                    new CIMRotationVisualVariable
+                    {
+                        VisualVariableInfoZ = new CIMVisualVariableInfo { Expression = "[SmokeDirDeg]" },
+                        RotationTypeZ = SymbolRotationType.Geographic,
+                    },
+                },
+            };
         }
 
         private static async Task<bool> CreateWindFeatureClassAsync(string fc, SpatialReference sr)
@@ -387,7 +435,7 @@ namespace TreeCounterAddin
                 null, cancelToken: null, flags: GPExecuteToolFlags.RefreshProjectItems);
             if (createResult.IsFailed) return false;
 
-            foreach (var (field, type) in new[] { ("WindSpeedKmh", "DOUBLE"), ("WindDirDeg", "DOUBLE") })
+            foreach (var (field, type) in new[] { ("WindSpeedKmh", "DOUBLE"), ("SmokeDirDeg", "DOUBLE") })
             {
                 var addResult = await Geoprocessing.ExecuteToolAsync("management.AddField",
                     Geoprocessing.MakeValueArray(fc, field, type),
@@ -398,16 +446,20 @@ namespace TreeCounterAddin
         }
 
         // Must run on the MCT (QueuedTask).
-        private static void InsertWindRow(string fc, double lat, double lon, double windSpeed, double windDir)
+        private static void InsertWindRows(string fc, List<(double Lat, double Lon, double Speed, double SmokeDir)> points)
         {
             using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(Path.GetDirectoryName(fc))));
             using var featureClass = geodatabase.OpenDataset<ArcGIS.Core.Data.FeatureClass>(Path.GetFileName(fc));
             using var insertCursor = featureClass.CreateInsertCursor();
-            using var rowBuffer = featureClass.CreateRowBuffer();
-            rowBuffer[featureClass.GetDefinition().GetShapeField()] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
-            rowBuffer["WindSpeedKmh"] = windSpeed;
-            rowBuffer["WindDirDeg"] = windDir;
-            insertCursor.Insert(rowBuffer);
+            var shapeField = featureClass.GetDefinition().GetShapeField();
+            foreach (var p in points)
+            {
+                using var rowBuffer = featureClass.CreateRowBuffer();
+                rowBuffer[shapeField] = MapPointBuilderEx.CreateMapPoint(p.Lon, p.Lat, SpatialReferences.WGS84);
+                rowBuffer["WindSpeedKmh"] = p.Speed;
+                rowBuffer["SmokeDirDeg"] = p.SmokeDir;
+                insertCursor.Insert(rowBuffer);
+            }
             insertCursor.Flush();
         }
 
