@@ -501,8 +501,13 @@ namespace TreeCounterAddin
                 // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
                 // compass bearing (clockwise from north) - standard conversion.
                 var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                var marker = SymbolFactory.Instance.ConstructMarker(color, 9, SimpleMarkerStyle.Triangle);
-                var symbol = new CIMPointSymbol { SymbolLayers = new CIMSymbolLayer[] { marker }, Angle = mathAngle };
+                // SymbolFactory.ConstructMarker(...) tried and still failed to rotate (real
+                // test, 2026-08-26, both Rod and Triangle) - the marker layer extracted from
+                // ConstructPointSymbol(...).SymbolLayers[0] is what the one confirmed-working
+                // rotation earlier in this investigation actually used; matched exactly
+                // instead of assuming the two factory paths are equivalent.
+                var marker = SymbolFactory.Instance.ConstructPointSymbol(color, 9, SimpleMarkerStyle.Triangle).SymbolLayers[0];
+                var symbol = new CIMPointSymbol { SymbolLayers = new[] { marker }, Angle = mathAngle };
                 return new CIMUniqueValueClass
                 {
                     Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
