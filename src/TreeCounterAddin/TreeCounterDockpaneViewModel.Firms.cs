@@ -262,10 +262,22 @@ namespace TreeCounterAddin
                     newLayer.SetRenderer(BuildHeatMapRenderer());
                 });
 
+                // Best-effort - a wind lookup failure (network hiccup, Open-Meteo down) is a
+                // nice-to-have layer on top of the hotspots that already loaded fine, not
+                // worth failing the whole run over.
+                var windNote = "";
+                try
+                {
+                    var centerLat = rows.Average(r => r.Lat);
+                    var centerLon = rows.Average(r => r.Lon);
+                    windNote = await AddWindArrowAsync(map, centerLat, centerLon, project, stamp);
+                }
+                catch (Exception) { /* soft-fail, see comment above */ }
+
                 var failedNote = failedSources.Count == 0 ? "" :
                     Tr($" ({string.Join(", ", failedSources)} failed, rest OK.)", $" ({string.Join(", ", failedSources)} gagal, sisanya OK.)");
-                FirmsStatus = Tr($"Done: {rows.Count} fire hotspot(s) loaded ({string.Join("+", sourcesToQuery)}, last {dayRange} day(s)).{failedNote}",
-                    $"Selesai: {rows.Count} titik panas dimuat ({string.Join("+", sourcesToQuery)}, {dayRange} hari terakhir).{failedNote}");
+                FirmsStatus = Tr($"Done: {rows.Count} fire hotspot(s) loaded ({string.Join("+", sourcesToQuery)}, last {dayRange} day(s)).{failedNote}{windNote}",
+                    $"Selesai: {rows.Count} titik panas dimuat ({string.Join("+", sourcesToQuery)}, {dayRange} hari terakhir).{failedNote}{windNote}");
             }
             catch (OperationCanceledException)
             {
@@ -323,6 +335,80 @@ namespace TreeCounterAddin
                 MinLabel = Tr("Fewer/sparser points", "Titik lebih sedikit/jarang"),
                 MaxLabel = Tr("More/denser points", "Titik lebih banyak/padat"),
             };
+        }
+
+        // Open-Meteo (free, no API key - unlike FIRMS) current wind at the centroid of the
+        // loaded hotspots, drawn as one rotated triangle showing where smoke would drift.
+        // Ported from the sgis (SQIS) mobile app's WindArrowGeoJson.kt concept (one arrow
+        // per weather check, not per hotspot - wind is roughly uniform over a small area,
+        // and a triangle per fire point would just be visual noise), adapted to a real CIM
+        // point symbol instead of a GeoJSON marker-color hack.
+        private async Task<string> AddWindArrowAsync(Map map, double lat, double lon, Project project, string stamp)
+        {
+            var url = FormattableString.Invariant(
+                $"https://api.open-meteo.com/v1/forecast?latitude={lat:F4}&longitude={lon:F4}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh");
+            var json = await FirmsHttp.GetStringAsync(url);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("current", out var current)) return "";
+            var windSpeed = current.GetProperty("wind_speed_10m").GetDouble();
+            var windDir = current.GetProperty("wind_direction_10m").GetDouble();
+            // Open-Meteo's wind_direction is meteorological convention - the direction the
+            // wind blows FROM - so smoke drifts the opposite way, +180.
+            var smokeDir = (windDir + 180.0) % 360.0;
+
+            var outputFc = Path.Combine(project.DefaultGeodatabasePath, $"WindDirection_{stamp}");
+            if (!await CreateWindFeatureClassAsync(outputFc, SpatialReferences.WGS84)) return "";
+
+            await QueuedTask.Run(() =>
+            {
+                InsertWindRow(outputFc, lat, lon, windSpeed, windDir);
+                if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
+                    return;
+                // CIM point symbol Angle is arithmetic (counterclockwise from east), not
+                // compass bearing (clockwise from north) - standard conversion between the
+                // two. SimpleMarkerStyle.Triangle points up (north/0 deg compass) at Angle=0.
+                var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
+                var symbol = SymbolFactory.Instance.ConstructPointSymbol(
+                    ColorFactory.Instance.CreateRGBColor(30, 90, 220), 22, SimpleMarkerStyle.Triangle);
+                symbol.Angle = mathAngle;
+                newLayer.SetRenderer(new CIMSimpleRenderer { Symbol = symbol.MakeSymbolReference() });
+            });
+
+            return Tr($" Wind: {windSpeed:F0} km/h (smoke drift arrow added).",
+                $" Angin: {windSpeed:F0} km/h (panah arah asap ditambahkan).");
+        }
+
+        private static async Task<bool> CreateWindFeatureClassAsync(string fc, SpatialReference sr)
+        {
+            var gdb = Path.GetDirectoryName(fc);
+            var name = Path.GetFileName(fc);
+            var createResult = await Geoprocessing.ExecuteToolAsync("management.CreateFeatureclass",
+                Geoprocessing.MakeValueArray(gdb, name, "POINT", "", "DISABLED", "DISABLED", sr),
+                null, cancelToken: null, flags: GPExecuteToolFlags.RefreshProjectItems);
+            if (createResult.IsFailed) return false;
+
+            foreach (var (field, type) in new[] { ("WindSpeedKmh", "DOUBLE"), ("WindDirDeg", "DOUBLE") })
+            {
+                var addResult = await Geoprocessing.ExecuteToolAsync("management.AddField",
+                    Geoprocessing.MakeValueArray(fc, field, type),
+                    null, cancelToken: null, flags: GPExecuteToolFlags.RefreshProjectItems);
+                if (addResult.IsFailed) return false;
+            }
+            return true;
+        }
+
+        // Must run on the MCT (QueuedTask).
+        private static void InsertWindRow(string fc, double lat, double lon, double windSpeed, double windDir)
+        {
+            using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(Path.GetDirectoryName(fc))));
+            using var featureClass = geodatabase.OpenDataset<ArcGIS.Core.Data.FeatureClass>(Path.GetFileName(fc));
+            using var insertCursor = featureClass.CreateInsertCursor();
+            using var rowBuffer = featureClass.CreateRowBuffer();
+            rowBuffer[featureClass.GetDefinition().GetShapeField()] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
+            rowBuffer["WindSpeedKmh"] = windSpeed;
+            rowBuffer["WindDirDeg"] = windDir;
+            insertCursor.Insert(rowBuffer);
+            insertCursor.Flush();
         }
 
         private sealed record FirmsHotspot(double Lat, double Lon, string AcqDate, string AcqTime, string Confidence, double Frp, string Satellite, string DayNight);

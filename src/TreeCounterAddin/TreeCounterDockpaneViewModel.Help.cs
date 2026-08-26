@@ -191,8 +191,10 @@ namespace TreeCounterAddin
             each one passes over at a different time and can miss a fire the others catch;
             pick a single source instead if you specifically want just one. Shown as a heat
             map (a density blob, not individual dots) - right-click the layer > Symbology
-            to switch to individual points or another style if you'd rather. Set a day
-            range (1-10 days, ending today), click Load Fire Hotspots.
+            to switch to individual points or another style if you'd rather. A blue arrow
+            is also added at the hotspot area showing current wind direction (which way
+            smoke would drift), pulled from Open-Meteo - free, no key needed for that part.
+            Set a day range (1-10 days, ending today), click Load Fire Hotspots.
             Needs a free MAP_KEY from firms.modaps.eosdis.nasa.gov, entered once on the
             Settings tab.
 
@@ -440,7 +442,9 @@ namespace TreeCounterAddin
             lewat di jam berbeda dan bisa melewatkan titik yang tertangkap satelit lain; pilih satu
             source spesifik kalau memang cuma butuh satu. Ditampilkan sebagai heat map
             (area gradasi kepadatan, bukan titik satu-satu) - klik kanan layer > Symbology
-            kalau mau ganti ke titik individual atau gaya lain.
+            kalau mau ganti ke titik individual atau gaya lain. Panah biru juga ditambahkan
+            di area titik panas menunjukkan arah angin saat ini (ke mana asap kemungkinan
+            terbawa), diambil dari Open-Meteo - gratis, tidak butuh key untuk bagian ini.
             Atur rentang hari (1-10 hari, hingga hari ini), klik Load Fire Hotspots. Butuh
             MAP_KEY gratis dari firms.modaps.eosdis.nasa.gov, diisi sekali di tab Settings.
 
