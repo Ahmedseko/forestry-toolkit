@@ -349,7 +349,7 @@ namespace TreeCounterAddin
         // comma-separated lat/lon lists and returns a JSON array (one element per location)
         // instead of a single object, so this isn't N separate requests.
         private const int WindGridSize = 5;
-        private const int StreamlineSteps = 16;
+        private const int StreamlineSteps = 24;
 
         private async Task<string> AddWindGridAsync(Map map, Envelope extentWgs84, Project project, string stamp)
         {
@@ -462,8 +462,13 @@ namespace TreeCounterAddin
             // Total streamline length as a fraction of grid spacing, scaled 40-100% by that
             // seed's own local speed (so faster wind visibly draws a longer line), same
             // reasoning as the earlier fixed-line version - just now spread across many
-            // short RK4 steps instead of one straight/bowed segment.
-            var baseLenDeg = Math.Min(lonStepDeg, latStepDeg) * 0.9;
+            // short RK4 steps instead of one straight/bowed segment. 2.4x a single cell
+            // (not ~1x) - checked the actual traced vertices directly in the geodatabase
+            // (2026-08-26): RK4 was tracing real curvature correctly, but at ~1 cell of
+            // travel a fairly steady real wind field just hadn't changed direction enough
+            // yet for the bend to read clearly on screen - letting each line travel across
+            // multiple cells gives the field more room to actually show its own variation.
+            var baseLenDeg = Math.Min(lonStepDeg, latStepDeg) * 2.4;
             await QueuedTask.Run(() =>
             {
                 using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(project.DefaultGeodatabasePath)));
