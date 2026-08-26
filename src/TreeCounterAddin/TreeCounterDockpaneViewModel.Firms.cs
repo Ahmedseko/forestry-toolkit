@@ -336,20 +336,26 @@ namespace TreeCounterAddin
         }
 
         // Open-Meteo (free, no API key - unlike FIRMS) current wind sampled on a regular
-        // grid spanning the queried extent, then traced into real streamlines - bilinear
-        // interpolation of the sampled (u,v) wind vectors + 4th-order Runge-Kutta
-        // integration, the standard method real tools use for this (confirmed against
-        // leaflet-velocity/windy.js - the engine behind Windy.com - and general vector-field
-        // visualization literature before building this, 2026-08-26). Two earlier attempts
-        // (a per-point rotated symbol, then an arbitrary decorative bow on each straight
-        // line) both drew a direction at each point in isolation; this instead traces how a
-        // particle would actually move through the *interpolated* field, so a line's
-        // curvature responds to how wind direction actually varies across the sampled area,
-        // not an artistic flourish. One HTTP call for the whole grid - Open-Meteo accepts
-        // comma-separated lat/lon lists and returns a JSON array (one element per location)
-        // instead of a single object, so this isn't N separate requests.
+        // 5x5 grid spanning the queried extent, bilinear-interpolated (same reasoning as
+        // before: averaging the Cartesian u,v components rather than the raw bearing avoids
+        // the wrong answer near the 0/360 wrap) to draw a DENSE field of small direction
+        // ticks instead of a few streamlines.
+        //
+        // History: point-symbol rotation (attempt 1) -> arbitrary decorative bow on a
+        // straight line (attempt 2) -> real RK4-traced streamlines (attempt 3, correct
+        // algorithm, verified against the actual traced vertices in the geodatabase) - all
+        // three used real-world line GEOMETRY, which is the wrong tool for this: a line's
+        // length is fixed in map units, so it looks fine at the zoom level it was drawn at
+        // and enormous once zoomed in further (confirmed with a real zoomed-in screenshot,
+        // 2026-08-26). Windy.com's own reference look - many small, densely-packed dashes -
+        // is a POINT symbol field: symbol size in ArcGIS is specified in points (screen
+        // units), so it stays visually small at any zoom, the way Windy's own dashes do.
+        // Reusing the OBJECTID-keyed baked-Angle CIMUniqueValueRenderer technique from the
+        // second rotation attempt (confirmed working then) instead of a data-driven
+        // expression (confirmed NOT working, twice, earlier in this same investigation).
         private const int WindGridSize = 5;
-        private const int StreamlineSteps = 24;
+        private const int WindDashGridX = 14;
+        private const int WindDashGridY = 10;
 
         private async Task<string> AddWindGridAsync(Map map, Envelope extentWgs84, Project project, string stamp)
         {
@@ -409,12 +415,10 @@ namespace TreeCounterAddin
             var lonStepDeg = (extentWgs84.XMax - extentWgs84.XMin) / WindGridSize;
             var latStepDeg = (extentWgs84.YMax - extentWgs84.YMin) / WindGridSize;
 
-            // Bilinear-interpolates the sampled (u,v) grid at an arbitrary lon/lat, then
-            // returns a unit direction vector in degrees-per-step terms (longitude scaled by
-            // 1/cos(lat), since a degree of longitude covers less real-world distance away
-            // from the equator) - normalized so integration step size is controlled purely
-            // by stepDeg below, independent of the field's own km/h magnitude.
-            (double dLon, double dLat) SampleUnitDir(double lon, double lat)
+            // Bilinear-interpolates the sampled (u,v) grid at an arbitrary lon/lat and
+            // returns the local wind bearing there (degrees, same smoke-drift convention as
+            // the raw samples).
+            double SampleBearingDeg(double lon, double lat)
             {
                 var fx = Math.Clamp((lon - extentWgs84.XMin) / lonStepDeg - 0.5, 0, WindGridSize - 1.001);
                 var fy = Math.Clamp((lat - extentWgs84.YMin) / latStepDeg - 0.5, 0, WindGridSize - 1.001);
@@ -428,102 +432,89 @@ namespace TreeCounterAddin
 
                 var u = Blend(uGrid);
                 var v = Blend(vGrid);
-                var mag = Math.Sqrt(u * u + v * v);
-                if (mag < 1e-6) return (0, 0);
-                var latRad = lat * Math.PI / 180.0;
-                return ((u / mag) / Math.Max(Math.Cos(latRad), 0.1), v / mag);
-            }
-
-            // Classic 4th-order Runge-Kutta - the standard integrator for this (low error,
-            // low cost, per the vector-field-visualization literature checked before
-            // building this) - traces where a particle dropped at (lon,lat) would actually
-            // drift through the interpolated field, step by step, rather than following one
-            // single direction sample the whole way.
-            MapPoint[] TraceStreamline(double lon, double lat, double stepDeg)
-            {
-                var path = new MapPoint[StreamlineSteps + 1];
-                path[0] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
-                for (int s = 0; s < StreamlineSteps; s++)
-                {
-                    var k1 = SampleUnitDir(lon, lat);
-                    var k2 = SampleUnitDir(lon + stepDeg / 2 * k1.dLon, lat + stepDeg / 2 * k1.dLat);
-                    var k3 = SampleUnitDir(lon + stepDeg / 2 * k2.dLon, lat + stepDeg / 2 * k2.dLat);
-                    var k4 = SampleUnitDir(lon + stepDeg * k3.dLon, lat + stepDeg * k3.dLat);
-                    lon += stepDeg / 6.0 * (k1.dLon + 2 * k2.dLon + 2 * k3.dLon + k4.dLon);
-                    lat += stepDeg / 6.0 * (k1.dLat + 2 * k2.dLat + 2 * k3.dLat + k4.dLat);
-                    path[s + 1] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
-                }
-                return path;
+                return (Math.Atan2(u, v) * 180.0 / Math.PI + 360.0) % 360.0;
             }
 
             var outputFc = Path.Combine(project.DefaultGeodatabasePath, $"WindDirection_{stamp}");
             if (!await CreateWindFeatureClassAsync(outputFc, SpatialReferences.WGS84)) return "";
 
-            // Total streamline length as a fraction of grid spacing, scaled 40-100% by that
-            // seed's own local speed (so faster wind visibly draws a longer line), same
-            // reasoning as the earlier fixed-line version - just now spread across many
-            // short RK4 steps instead of one straight/bowed segment.
-            //
-            // Tried 2.4x a cell to expose more real curvature (checked against actual
-            // traced vertices in the geodatabase - RK4 itself was correct, a steady real
-            // wind field just hadn't turned much over ~1 cell) - reverted (2026-08-26) after
-            // a real zoomed-in screenshot showed lines dwarfing the hotspot clusters they're
-            // meant to give local context for. A short, mostly-straight line that fits the
-            // area is more useful here than a long one chasing visible curvature - the field
-            // being genuinely steady in this area is an honest result, not a defect.
-            var baseLenDeg = Math.Min(lonStepDeg, latStepDeg) * 0.9;
             await QueuedTask.Run(() =>
             {
                 using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(project.DefaultGeodatabasePath)));
                 using var featureClass = geodatabase.OpenDataset<ArcGIS.Core.Data.FeatureClass>(Path.GetFileName(outputFc));
                 using var insertCursor = featureClass.CreateInsertCursor();
                 var shapeField = featureClass.GetDefinition().GetShapeField();
-                for (int s = 0; s < uGrid.Length; s++)
+                var dirs = new List<double>(WindDashGridX * WindDashGridY);
+                for (int iy = 0; iy < WindDashGridY; iy++)
                 {
-                    var speed = Math.Sqrt(uGrid[s] * uGrid[s] + vGrid[s] * vGrid[s]);
-                    var lenScale = Math.Clamp(speed / 20.0, 0.4, 1.0);
-                    var stepDeg = (baseLenDeg * lenScale) / StreamlineSteps;
-                    var path = TraceStreamline(lons[s], lats[s], stepDeg);
+                    var lat = extentWgs84.YMin + (extentWgs84.YMax - extentWgs84.YMin) * (iy + 0.5) / WindDashGridY;
+                    for (int ix = 0; ix < WindDashGridX; ix++)
+                    {
+                        var lon = extentWgs84.XMin + (extentWgs84.XMax - extentWgs84.XMin) * (ix + 0.5) / WindDashGridX;
+                        var dirDeg = SampleBearingDeg(lon, lat);
+                        dirs.Add(dirDeg);
 
-                    using var rowBuffer = featureClass.CreateRowBuffer();
-                    rowBuffer[shapeField] = PolylineBuilderEx.CreatePolyline(path, SpatialReferences.WGS84);
-                    rowBuffer["WindSpeedKmh"] = speed;
-                    rowBuffer["SmokeDirDeg"] = (Math.Atan2(uGrid[s], vGrid[s]) * 180.0 / Math.PI + 360.0) % 360.0;
-                    insertCursor.Insert(rowBuffer);
+                        using var rowBuffer = featureClass.CreateRowBuffer();
+                        rowBuffer[shapeField] = MapPointBuilderEx.CreateMapPoint(lon, lat, SpatialReferences.WGS84);
+                        rowBuffer["WindSpeedKmh"] = avgSpeed;
+                        rowBuffer["SmokeDirDeg"] = dirDeg;
+                        insertCursor.Insert(rowBuffer);
+                    }
                 }
                 insertCursor.Flush();
 
                 if (LayerFactory.Instance.CreateLayer(new Uri(outputFc), map, layerName: Path.GetFileName(outputFc)) is not FeatureLayer newLayer)
                     return;
-                newLayer.SetRenderer(new CIMSimpleRenderer { Symbol = BuildWindLineSymbol().MakeSymbolReference() });
+                newLayer.SetRenderer(BuildWindDashRenderer(dirs));
             });
 
-            return Tr($" Wind: ~{avgSpeed:F0} km/h avg across {uGrid.Length} streamline(s) (RK4-traced, smoke drift).",
-                $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {uGrid.Length} streamline (ditelusuri RK4, arah asap).");
+            return Tr($" Wind: ~{avgSpeed:F0} km/h avg across {WindDashGridX * WindDashGridY} point(s) (smoke drift).",
+                $" Angin: ~{avgSpeed:F0} km/h rata-rata dari {WindDashGridX * WindDashGridY} titik (arah asap).");
         }
 
-        // Two earlier attempts at rotating a POINT symbol per feature (a data-driven
-        // CIMRotationVisualVariable, then 16 individually-angled symbols via a unique-value
-        // renderer) either silently failed to rotate or came back with a shape too
-        // ambiguous to read as a direction (real feedback, 2026-08-26 - "a triangle alone
-        // doesn't say where it's from or where it's going"). Switched to real LINE geometry
-        // instead: each line's own start->end already encodes its direction, so a single
-        // shared CIMLineSymbol (built once, not per feature) with a Triangle marker placed
-        // "at extremities" (ArcGIS's native mechanism for arrowhead-on-line symbology,
-        // AngleToLine=true auto-orients the head to match each line's own bearing) replaces
-        // all the per-feature rotation math entirely - one renderer for every line, no
-        // OBJECTID-keyed classes needed.
-        private static CIMLineSymbol BuildWindLineSymbol()
+        // A dense field of small, fixed-screen-size dashes (Windy.com's own look) instead of
+        // real-world line geometry - the three earlier attempts (rotated point symbol,
+        // decorative bow, RK4-traced streamline) all drew actual map geometry, which looks
+        // fine at the zoom level it was drawn at and enormous once zoomed in further
+        // (confirmed with a real zoomed-in screenshot, 2026-08-26 - a streamline meant to sit
+        // near a hotspot cluster spanned most of the visible map once zoomed in). ArcGIS
+        // symbol size is specified in points (screen units, not map units), so this stays
+        // visually small at any zoom - structurally fixes the "too long once zoomed in"
+        // problem instead of another length tweak.
+        //
+        // One CIMUniqueValueClass per dash, keyed on OBJECTID with its own baked-in
+        // CIMPointSymbol.Angle - the same mechanism already proven to work reliably earlier
+        // in this investigation (a data-driven rotation expression was tried twice and
+        // silently failed both times; this baked-per-symbol approach didn't).
+        private static CIMUniqueValueRenderer BuildWindDashRenderer(List<double> smokeDirsDeg)
         {
             var color = ColorFactory.Instance.CreateRGBColor(30, 90, 220);
-            var stroke = new CIMSolidStroke { Color = color, Width = 1.5 };
-            var head = SymbolFactory.Instance.ConstructMarker(color, 8, SimpleMarkerStyle.Triangle);
-            head.MarkerPlacement = new CIMMarkerPlacementAtExtremities
+
+            CIMUniqueValueClass ClassFor(int objectId, double smokeDir)
             {
-                ExtremityPlacement = ExtremityPlacement.JustEnd,
-                AngleToLine = true,
+                // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
+                // compass bearing (clockwise from north) - standard conversion.
+                var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
+                var symbol = SymbolFactory.Instance.ConstructPointSymbol(color, 9, SimpleMarkerStyle.Rod);
+                symbol.Angle = mathAngle;
+                return new CIMUniqueValueClass
+                {
+                    Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
+                    Symbol = symbol.MakeSymbolReference(),
+                };
+            }
+
+            return new CIMUniqueValueRenderer
+            {
+                Fields = new[] { "OBJECTID" },
+                Groups = new[]
+                {
+                    new CIMUniqueValueGroup
+                    {
+                        Classes = smokeDirsDeg.Select((d, i) => ClassFor(i + 1, d)).ToArray(),
+                    },
+                },
             };
-            return new CIMLineSymbol { SymbolLayers = new CIMSymbolLayer[] { stroke, head } };
         }
 
         private static async Task<bool> CreateWindFeatureClassAsync(string fc, SpatialReference sr)
@@ -531,7 +522,7 @@ namespace TreeCounterAddin
             var gdb = Path.GetDirectoryName(fc);
             var name = Path.GetFileName(fc);
             var createResult = await Geoprocessing.ExecuteToolAsync("management.CreateFeatureclass",
-                Geoprocessing.MakeValueArray(gdb, name, "POLYLINE", "", "DISABLED", "DISABLED", sr),
+                Geoprocessing.MakeValueArray(gdb, name, "POINT", "", "DISABLED", "DISABLED", sr),
                 null, cancelToken: null, flags: GPExecuteToolFlags.RefreshProjectItems);
             if (createResult.IsFailed) return false;
 

@@ -191,10 +191,11 @@ namespace TreeCounterAddin
             each one passes over at a different time and can miss a fire the others catch;
             pick a single source instead if you specifically want just one. Shown as a heat
             map (a density blob, not individual dots) - right-click the layer > Symbology
-            to switch to individual points or another style if you'd rather. A 4x4 grid of
-            blue arrows is also added across the same extent showing current wind direction
-            at each point (which way smoke would drift), pulled from Open-Meteo - free, no
-            key needed for that part. Set a day range (1-10 days, ending today), click Load Fire Hotspots.
+            to switch to individual points or another style if you'd rather. A dense field of
+            small blue dashes (Windy.com-style - fixed screen size, stays small at any zoom)
+            is also added across the same extent showing current wind direction (which way
+            smoke would drift), pulled from Open-Meteo - free, no key needed for that part.
+            Set a day range (1-10 days, ending today), click Load Fire Hotspots.
             Needs a free MAP_KEY from firms.modaps.eosdis.nasa.gov, entered once on the
             Settings tab.
 
@@ -442,8 +443,9 @@ namespace TreeCounterAddin
             lewat di jam berbeda dan bisa melewatkan titik yang tertangkap satelit lain; pilih satu
             source spesifik kalau memang cuma butuh satu. Ditampilkan sebagai heat map
             (area gradasi kepadatan, bukan titik satu-satu) - klik kanan layer > Symbology
-            kalau mau ganti ke titik individual atau gaya lain. Grid 4x4 panah biru juga
-            ditambahkan di area yang sama menunjukkan arah angin saat ini di tiap titik
+            kalau mau ganti ke titik individual atau gaya lain. Medan padat garis-garis
+            kecil biru (gaya Windy.com - ukuran tetap di layar, tetap kecil di zoom
+            berapa pun) juga ditambahkan di area yang sama menunjukkan arah angin saat ini
             (ke mana asap kemungkinan terbawa), diambil dari Open-Meteo - gratis, tidak
             butuh key untuk bagian ini.
             Atur rentang hari (1-10 hari, hingga hari ini), klik Load Fire Hotspots. Butuh
