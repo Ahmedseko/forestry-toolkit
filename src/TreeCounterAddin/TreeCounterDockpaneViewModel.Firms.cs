@@ -464,10 +464,19 @@ namespace TreeCounterAddin
             var shapeField = featureClass.GetDefinition().GetShapeField();
             foreach (var p in points)
             {
+                // Scaled by speed (40-100% of the base length) instead of every line being
+                // identical regardless of actual wind speed - a real report (2026-08-26)
+                // found the uniform grid look "stiff/unnatural"; faster wind now reads as a
+                // visibly longer line, some natural variation across the grid instead of a
+                // mechanically uniform one. 20 km/h treated as "fast" - clamped, not
+                // normalized against this run's own min/max, so a single outlier point can't
+                // squash every other line down to the same length.
+                var lenScale = Math.Clamp(p.Speed / 20.0, 0.4, 1.0);
+                var thisLineLenDeg = lineLenDeg * lenScale;
                 var bearingRad = p.SmokeDir * Math.PI / 180.0;
                 var latRad = p.Lat * Math.PI / 180.0;
-                var dLat = lineLenDeg * Math.Cos(bearingRad);
-                var dLon = lineLenDeg * Math.Sin(bearingRad) / Math.Max(Math.Cos(latRad), 0.1);
+                var dLat = thisLineLenDeg * Math.Cos(bearingRad);
+                var dLon = thisLineLenDeg * Math.Sin(bearingRad) / Math.Max(Math.Cos(latRad), 0.1);
                 var start = MapPointBuilderEx.CreateMapPoint(p.Lon, p.Lat, SpatialReferences.WGS84);
                 var end = MapPointBuilderEx.CreateMapPoint(p.Lon + dLon, p.Lat + dLat, SpatialReferences.WGS84);
 
