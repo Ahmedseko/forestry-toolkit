@@ -419,12 +419,11 @@ namespace TreeCounterAddin
             CIMUniqueValueClass ClassFor(int objectId, double smokeDir)
             {
                 // CIMPointSymbol.Angle is arithmetic (counterclockwise from east), not
-                // compass bearing (clockwise from north) - standard conversion.
-                // SimpleMarkerStyle.Triangle points up (north/0 deg compass) at Angle=0.
+                // compass bearing (clockwise from north) - standard conversion. The arrow
+                // (see BuildArrowSymbol) points up (north/0 deg compass) at Angle=0, same as
+                // a bare Triangle would.
                 var mathAngle = (90.0 - smokeDir + 360.0) % 360.0;
-                var symbol = SymbolFactory.Instance.ConstructPointSymbol(
-                    ColorFactory.Instance.CreateRGBColor(30, 90, 220), 10, SimpleMarkerStyle.Triangle);
-                symbol.Angle = mathAngle;
+                var symbol = BuildArrowSymbol(ColorFactory.Instance.CreateRGBColor(30, 90, 220), 14, mathAngle);
                 return new CIMUniqueValueClass
                 {
                     Values = new[] { new CIMUniqueValue { FieldValues = new[] { objectId.ToString(CultureInfo.InvariantCulture) } } },
@@ -442,6 +441,29 @@ namespace TreeCounterAddin
                         Classes = points.Select((p, i) => ClassFor(i + 1, p.SmokeDir)).ToArray(),
                     },
                 },
+            };
+        }
+
+        // A bare Triangle alone reads as "a shape", not "a direction" (real feedback,
+        // 2026-08-26 - hard to tell head from tail at a glance). Combines a thin Rod
+        // (shaft/tail) with a Triangle (arrowhead/tip) into one CIMPointSymbol, offset apart
+        // along the local up-axis, so it reads as an actual arrow. CIMPointSymbol.Angle
+        // rotates every layer in SymbolLayers together as one unit (per its own XML doc:
+        // "propagated cumulatively to all marker symbols"), so the whole arrow turns as a
+        // single piece from the one Angle value already computed per grid point.
+        private static CIMPointSymbol BuildArrowSymbol(CIMColor color, double size, double angleDeg)
+        {
+            var headSymbol = SymbolFactory.Instance.ConstructPointSymbol(color, size, SimpleMarkerStyle.Triangle);
+            var shaftSymbol = SymbolFactory.Instance.ConstructPointSymbol(color, size * 0.7, SimpleMarkerStyle.Rod);
+            var head = (CIMVectorMarker)headSymbol.SymbolLayers[0];
+            var shaft = (CIMVectorMarker)shaftSymbol.SymbolLayers[0];
+            head.OffsetY = size * 0.4;
+            shaft.OffsetY = -size * 0.15;
+
+            return new CIMPointSymbol
+            {
+                SymbolLayers = new CIMSymbolLayer[] { shaft, head },
+                Angle = angleDeg,
             };
         }
 
