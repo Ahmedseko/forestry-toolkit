@@ -507,7 +507,16 @@ produced it) - add if the log alone isn't enough.
   the natural source if this gets revisited - either build the field
   properly (bilinear-interpolated wind grid + RK4 streamline tracing is the
   standard technique real tools like Windy.com use) or skip it and just
-  point users at Windy.com/BMKG directly for wind context.
+  point users at Windy.com/BMKG directly for wind context. **If Open-Meteo
+  gets used again**: confirmed against their own [Terms](https://open-meteo.com/en/terms)
+  and [License](https://open-meteo.com/en/license) (2026-08-27) that the
+  free tier's non-commercial condition is fine for this project (free,
+  open source, no subscription/ads - fits their own stated definition), but
+  the data itself is CC BY 4.0, which requires attribution somewhere in the
+  app/docs - none exists right now since nothing currently calls it. Add a
+  credit line (e.g. "Weather data by Open-Meteo.com, CC BY 4.0") to the
+  About tab and this README's License section before shipping a feature
+  that actually uses it.
 - **Sliver Polygon Detection** - pick a polygon layer, click **Detect
   Slivers**. Auto-calibrates against that layer's own median part size/shape
   (no fixed threshold to tune) and selects the flagged slivers on the map.
