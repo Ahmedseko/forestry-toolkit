@@ -5,9 +5,9 @@ cruising/forestry workflow: land clearing and road/trail extraction from drone
 orthophotos, tree/oil palm detection (ported from the QGIS plugin
 `qgis_plugin/tree_counter`, LandTree Analyzer - still under active accuracy
 tuning, see the callout below), fishnet grid generation, field-data import
-(Excel, geotagged photos, photo-watermark OCR), sliver-polygon/biomass/slope/
-riparian-buffer analysis, a cruising summary report, GPX export, and a custom
-photo popup tool.
+(Excel, geotagged photos, photo-watermark OCR), NASA FIRMS fire hotspot
+monitoring, sliver-polygon/biomass/slope/riparian-buffer analysis, a cruising
+summary report, GPX export, and a custom photo popup tool.
 
 <!-- Screenshots section - commented out until real screenshots exist (none are
 ready yet, 2026-08-18). Uncomment once docs/images/*.png are filled in - see
@@ -458,6 +458,44 @@ produced it) - add if the log alone isn't enough.
   "Lost" layer (likely felled), new points with no match load as a green
   "New" layer (likely regrowth/previously missed). *Cancel: no (a single
   quick nearest-neighbor match, no GP tool chain).*
+- **NASA FIRMS Fire Hotspots** - loads satellite-detected active-fire points
+  over the current map extent (no polygon needed - just zoom/pan to the area,
+  click **Load Fire Hotspots**), for cross-checking Land Clearing Detection
+  results since burning is a common land-clearing method, and general
+  karhutla monitoring. Needs a free MAP_KEY from
+  [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov),
+  entered once on the **Settings** tab (stored DPAPI-encrypted via
+  `ApiKeyStore`, same mechanism as the AI Vision Validation keys, under its
+  own `"firms"` entry). **All Sources** (default) queries 4 satellite
+  sources at once - VIIRS SNPP/NOAA-20/NOAA-21 + MODIS - and merges the
+  results; a real side-by-side test found a genuine hotspot that only MODIS
+  caught, all 3 VIIRS satellites missed it that day, so folding MODIS into
+  the default merge (not just VIIRS) measurably matters. The 4 requests run
+  in parallel (`Task.WhenAll`), not one after another - noticeably faster
+  than awaiting them in a loop, especially with all 4 sources selected. One
+  source erroring doesn't sink the whole query, only that source is skipped
+  (noted in the final status) - it only fails outright if every source
+  errors. Shown as a **Heat Map** (density blob, not individual dots) -
+  `CIMHeatMapRenderer`'s `ColorScheme` needed an explicit red/orange/yellow
+  `CIMMultipartColorRamp`; leaving it unset renders grayscale, not the
+  "hot" look you'd expect. Zero-result runs show the actual lat/lon box
+  that was searched in the status line, so "genuinely no fires this
+  window" and "the extent used wasn't where you meant" (e.g. zoomed out
+  too far on a UTM-projected map, breaking the extent-to-lat/lon
+  conversion - also caught explicitly, with its own error message) aren't
+  indistinguishable. *Cancel: yes.*
+
+  A wind-direction/smoke-drift overlay (arrows or dashes showing which way
+  smoke would blow from a hotspot) was tried and removed - four different
+  renderings (a rotated point symbol, a decorative bow on a line, a real
+  RK4-traced streamline field, a dense Windy.com-style dash field) each hit
+  their own rotation/scale problems without landing on something that
+  actually looked right, and the effort-to-payoff ratio stopped making
+  sense. `Open-Meteo`'s free current-weather API (no key needed) is still
+  the natural source if this gets revisited - either build the field
+  properly (bilinear-interpolated wind grid + RK4 streamline tracing is the
+  standard technique real tools like Windy.com use) or skip it and just
+  point users at Windy.com/BMKG directly for wind context.
 - **Sliver Polygon Detection** - pick a polygon layer, click **Detect
   Slivers**. Auto-calibrates against that layer's own median part size/shape
   (no fixed threshold to tune) and selects the flagged slivers on the map.
@@ -491,6 +529,10 @@ produced it) - add if the log alone isn't enough.
   validate Tree Detection results. Keys are saved encrypted (DPAPI) per
   provider, so switching providers doesn't lose the other's key. **Test
   Key** checks it works before running a full detection.
+- **NASA FIRMS MAP_KEY** - free token for the Fire Hotspots feature above,
+  same DPAPI-encrypted storage as the AI Vision Validation keys. **Test
+  Key** hits FIRMS' own `mapkey_status` endpoint and reports valid/invalid
+  plus the current 10-minute transaction usage (5000/10min limit).
 - Fishnet cell size, cruising coordinate system, and biomass constants are
   saved automatically as they're changed (plain JSON, no dialog needed) and
   restored next time ArcGIS Pro opens.
