@@ -45,28 +45,28 @@ harness that already exists there.
 
 ```mermaid
 flowchart LR
-    subgraph ArcGISPro["ArcGIS Pro process (.NET)"]
+    subgraph ArcGISPro["🖥️ ArcGIS Pro process (.NET)"]
         Ribbon["Ribbon tab / buttons"]
-        DockPane["DockPane WPF UI\n(TreeCounterDockpaneView/ViewModel)"]
-        MapTool["Map click tools\n(Photo Popup, Color Sampler)"]
+        DockPane["DockPane WPF UI<br/>(TreeCounterDockpaneView/ViewModel)"]
+        MapTool["Map click tools<br/>(Photo Popup, Color Sampler)"]
         Ribbon --> DockPane
         MapTool --> DockPane
     end
 
-    subgraph PyBackend["Python subprocess (ArcGIS Pro's own conda env)"]
-        Service["PythonBackendService.cs\n(spawns + streams progress)"]
-        Scripts["backend/*.py\n(detect.py, detect_clearing.py,\ndetect_roads.py, ...)"]
-        Algo["numpy / scipy / scikit-image\nExG + Gaussian filter, YOLOv8/U-Net (ONNX)"]
+    subgraph PyBackend["🐍 Python subprocess (ArcGIS Pro's own conda env)"]
+        Service["PythonBackendService.cs<br/>(spawns + streams progress)"]
+        Scripts["backend/*.py<br/>(detect.py, detect_clearing.py,<br/>detect_roads.py, ...)"]
+        Algo["numpy / scipy / scikit-image<br/>ExG + Gaussian filter, YOLOv8/U-Net (ONNX)"]
         Service --> Scripts --> Algo
     end
 
-    subgraph Optional["Optional, opt-in"]
-        AI["Gemini / OpenAI / Claude\nAI Vision Validation\n(your own API key)"]
+    subgraph Optional["✨ Optional, opt-in"]
+        AI["Gemini / OpenAI / Claude<br/>AI Vision Validation<br/>(your own API key)"]
     end
 
-    GP["arcpy GP tools\n(RasterToPolygon, SmoothPolygon, ...)"]
-    FC["Feature class in the project gdb"]
-    Map["Loaded back onto the active map\nwith symbology"]
+    GP["arcpy GP tools<br/>(RasterToPolygon, SmoothPolygon, ...)"]
+    FC[("Feature class<br/>in the project gdb")]
+    Map["Loaded back onto the active map<br/>with symbology"]
 
     DockPane -- "raster/layer paths + params" --> Service
     Algo -- "mask / points / lines" --> GP
@@ -74,12 +74,22 @@ flowchart LR
     AI -. "accept/reject" .-> GP
     GP --> FC --> Map
     Service -- "progress % / stage text" --> DockPane
+
+    classDef arcgis fill:#dbeafe,stroke:#2563eb,color:#1e293b
+    classDef python fill:#dcfce7,stroke:#16a34a,color:#1e293b
+    classDef optional fill:#fef3c7,stroke:#d97706,color:#1e293b,stroke-dasharray: 4 3
+    classDef data fill:#ede9fe,stroke:#7c3aed,color:#1e293b
+
+    class Ribbon,DockPane,MapTool arcgis
+    class Service,Scripts,Algo python
+    class AI optional
+    class GP,FC,Map data
 ```
 
 ```text
-src/TreeCounterAddin/     .NET add-in: ribbon button + WPF DockPane (UI)
-backend/                  Python port of qgis_plugin/tree_counter, invoked
-                          as a subprocess by PythonBackendService.cs
+├── src/TreeCounterAddin/   .NET add-in - ribbon button + WPF DockPane (UI)
+└── backend/                Python port of qgis_plugin/tree_counter, invoked
+                             as a subprocess by PythonBackendService.cs
 ```
 
 - `TreeCounterModule.cs` - module registration.
