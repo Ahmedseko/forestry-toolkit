@@ -202,11 +202,14 @@ namespace TreeCounterAddin
                 var bbox = FormattableString.Invariant($"{extent.XMin},{extent.YMin},{extent.XMax},{extent.YMax}");
                 var sourcesToQuery = SelectedFirmsSource == AllViirsSource ? AllSources : new[] { SelectedFirmsSource };
 
-                var rows = new List<FirmsHotspot>();
-                var failedSources = new List<string>();
-                foreach (var source in sourcesToQuery)
+                // Fired off together instead of one at a time - each source is an independent
+                // HTTP round-trip against the same bbox/day range, so awaiting them
+                // sequentially in a loop was paying for 4 round-trips back to back (real
+                // complaint, 2026-08-26: "loading agak lama") when the real wait is just the
+                // slowest single one.
+                FirmsStatus = Tr($"Loading {sourcesToQuery.Length} source(s)...", $"Memuat {sourcesToQuery.Length} source...");
+                async Task<(string Source, List<FirmsHotspot> Rows, bool Failed)> FetchSourceAsync(string source)
                 {
-                    FirmsStatus = Tr($"Loading {source}...", $"Memuat {source}...");
                     var url = $"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{FirmsMapKey}/{source}/{bbox}/{dayRange}";
                     try
                     {
@@ -217,14 +220,18 @@ namespace TreeCounterAddin
                         // query over several sources, so this only skips that one source
                         // (same as sgis's FirmsRefreshWorker) rather than aborting outright -
                         // it still aborts below if literally every source failed.
-                        if (!csv.Contains(',')) { failedSources.Add(source); continue; }
-                        rows.AddRange(ParseFirmsCsv(csv));
+                        if (!csv.Contains(',')) return (source, new List<FirmsHotspot>(), true);
+                        return (source, ParseFirmsCsv(csv), false);
                     }
                     catch (Exception) when (sourcesToQuery.Length > 1)
                     {
-                        failedSources.Add(source);
+                        return (source, new List<FirmsHotspot>(), true);
                     }
                 }
+
+                var results = await Task.WhenAll(sourcesToQuery.Select(FetchSourceAsync));
+                var rows = results.SelectMany(r => r.Rows).ToList();
+                var failedSources = results.Where(r => r.Failed).Select(r => r.Source).ToList();
                 if (rows.Count == 0 && failedSources.Count == sourcesToQuery.Length)
                 {
                     FirmsStatus = Tr($"FIRMS error on every source queried ({string.Join(", ", failedSources)}).",
