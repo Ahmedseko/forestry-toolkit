@@ -466,11 +466,13 @@ produced it) - add if the log alone isn't enough.
   [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov),
   entered once on the **Settings** tab (stored DPAPI-encrypted via
   `ApiKeyStore`, same mechanism as the AI Vision Validation keys, under its
-  own `"firms"` entry). **All Sources** (default) queries 4 satellite
-  sources at once - VIIRS SNPP/NOAA-20/NOAA-21 + MODIS - and merges the
-  results; a real side-by-side test found a genuine hotspot that only MODIS
-  caught, all 3 VIIRS satellites missed it that day, so folding MODIS into
-  the default merge (not just VIIRS) measurably matters. The 4 requests run
+  own `"firms"` entry). **All Sources** (default) queries 4 data sources at
+  once, spanning 5 satellites - VIIRS on Suomi NPP/NOAA-20/NOAA-21 (one
+  satellite each) + `MODIS_NRT` (a single source that itself combines Terra
+  and Aqua) - and merges the results; a real side-by-side test found a
+  genuine hotspot that only MODIS caught, all 3 VIIRS satellites missed it
+  that day, so folding MODIS into the default merge (not just VIIRS)
+  measurably matters. The 4 requests run
   in parallel (`Task.WhenAll`), not one after another - noticeably faster
   than awaiting them in a loop, especially with all 4 sources selected. One
   source erroring doesn't sink the whole query, only that source is skipped
