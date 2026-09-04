@@ -77,9 +77,21 @@
                      (2026-09-05). Content still lives in one Grid below with each tab's panel shown
                      only when SelectedTabIndex matches its own index (IndexToVisibilityConverter) -
                      same single shared TreeCounterDockpaneViewModel as before, just a different
-                     strip chrome, not a per-tab ViewModel/DataTemplate split. -->
+                     strip chrome, not a per-tab ViewModel/DataTemplate split.
+
+                     ItemsPanel forced to a WrapPanel (overriding whatever the style sets, since a
+                     local property wins over a Style setter) - Esri_ListBoxPanelIndicator's own
+                     built-in "..." overflow flyout renders blank rows for our 8 tabs in a narrow
+                     docked panel (Esri's own CustomCatalog sample only ever puts ~2 items in this
+                     style, so its overflow flyout is likely just undertested past that). Wrapping to
+                     a 2nd line instead avoids that flyout entirely, keeping labels always readable. -->
                 <ListBox DockPanel.Dock="Top" Style="{DynamicResource Esri_ListBoxPanelIndicator}"
                          SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
                     <ListBoxItem Content="{local:Tr Tab_Prepare}"/>
                     <ListBoxItem Content="{local:Tr Tab_FieldData}"/>
                     <ListBoxItem Content="{local:Tr Tab_Analyze}"/>
