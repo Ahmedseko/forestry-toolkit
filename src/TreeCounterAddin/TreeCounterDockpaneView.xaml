@@ -11,7 +11,6 @@
         <local:BilingualTooltipConverter x:Key="BilingualTooltip"/>
         <local:InverseBooleanConverter x:Key="InverseBool"/>
         <local:UiTextConverter x:Key="UiText"/>
-        <local:IndexToVisibilityConverter x:Key="IdxVis"/>
 
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="Margin" Value="0,0,0,2"/>
@@ -70,39 +69,9 @@
 
             <!-- Grouped by where each feature sits in the field workflow: get the area ready,
                  bring field data back in, run analysis on it, then the rarely-touched settings. -->
-            <DockPanel LastChildFill="True">
-                <!-- ArcGIS Pro's own catalog-pane tab strip (ListBox + Esri_ListBoxPanelIndicator,
-                     see Esri/arcgis-pro-sdk-community-samples Framework/CustomCatalog) instead of a
-                     plain WPF TabControl - feedback from an Esri Community post about this project
-                     (2026-09-05). Content still lives in one Grid below with each tab's panel shown
-                     only when SelectedTabIndex matches its own index (IndexToVisibilityConverter) -
-                     same single shared TreeCounterDockpaneViewModel as before, just a different
-                     strip chrome, not a per-tab ViewModel/DataTemplate split.
-
-                     ItemsPanel forced to a WrapPanel (overriding whatever the style sets, since a
-                     local property wins over a Style setter) - Esri_ListBoxPanelIndicator's own
-                     built-in "..." overflow flyout renders blank rows for our 8 tabs in a narrow
-                     docked panel (Esri's own CustomCatalog sample only ever puts ~2 items in this
-                     style, so its overflow flyout is likely just undertested past that). Wrapping to
-                     a 2nd line instead avoids that flyout entirely, keeping labels always readable. -->
-                <ListBox DockPanel.Dock="Top" Style="{DynamicResource Esri_ListBoxPanelIndicator}"
-                         SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBoxItem Content="{local:Tr Tab_Prepare}"/>
-                    <ListBoxItem Content="{local:Tr Tab_FieldData}"/>
-                    <ListBoxItem Content="{local:Tr Tab_Analyze}"/>
-                    <ListBoxItem Content="{local:Tr Tab_Favorites}"/>
-                    <ListBoxItem Content="{local:Tr Tab_History}"/>
-                    <ListBoxItem Content="{local:Tr Tab_Settings}"/>
-                    <ListBoxItem Content="{local:Tr Tab_Help}"/>
-                    <ListBoxItem Content="{local:Tr Tab_About}"/>
-                </ListBox>
-                <Grid>
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=0}">
+            <TabControl>
+                <TabItem Header="{local:Tr Tab_Prepare}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <Expander Header="{local:Tr FlightPlanner_Header}" Style="{StaticResource SectionExpander}">
                             <StackPanel Style="{StaticResource SectionContent}">
                                 <TextBlock Text="{local:Tr FlightPlanner_Hint}"
@@ -257,8 +226,10 @@
                             </StackPanel>
                         </Expander>
                     </StackPanel>
+                </TabItem>
 
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=1}">
+                <TabItem Header="{local:Tr Tab_FieldData}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <Expander Header="{local:Tr ExcelImport_Header}" Style="{StaticResource SectionExpander}">
                             <StackPanel Style="{StaticResource SectionContent}">
                                 <TextBlock Text="{local:Tr ExcelImport_Hint}"
@@ -353,8 +324,10 @@
                             </StackPanel>
                         </Expander>
                     </StackPanel>
+                </TabItem>
 
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=2}">
+                <TabItem Header="{local:Tr Tab_Analyze}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <Expander Header="{local:Tr TreeDetection_Header}" Style="{StaticResource SectionExpander}">
                             <StackPanel Style="{StaticResource SectionContent}">
                                 <TextBlock Text="{local:Tr RasterLayerLabel}" Style="{StaticResource FieldLabel}"/>
@@ -631,14 +604,16 @@
                             </StackPanel>
                         </Expander>
                     </StackPanel>
+                </TabItem>
 
-                    <!-- Marks layers the user cares about without touching the layer itself (no
-                         rename - a layer's Name also drives its legend text in a layout, so a
-                         "⭐ " prefix would silently show up there too) - lives entirely in this
-                         add-in, see FavoritesStore. Its own tab (not a persistent section above
-                         the tab strip, tried first) so a long favorites list can't push the tab
-                         headers themselves out of view. -->
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=3}">
+                <!-- Marks layers the user cares about without touching the layer itself (no
+                     rename - a layer's Name also drives its legend text in a layout, so a
+                     "⭐ " prefix would silently show up there too) - lives entirely in this
+                     add-in, see FavoritesStore. Its own tab (not a persistent section above
+                     the TabControl, tried first) so a long favorites list can't push the tab
+                     headers themselves out of view. -->
+                <TabItem Header="{local:Tr Tab_Favorites}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <TextBlock Text="{local:Tr Favorites_SearchLabel}" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding LayerSearchText, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,0,0,4" ToolTip="{local:Tr Favorites_SearchTooltip}"/>
@@ -665,11 +640,13 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
+                </TabItem>
 
-                    <!-- A running log of what ran, when, and its result, across every feature -
-                         see TreeCounterDockpaneViewModel.History.cs for how this is populated
-                         generically off every feature's own "XxxStatus" property. -->
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=4}">
+                <!-- A running log of what ran, when, and its result, across every feature -
+                     see TreeCounterDockpaneViewModel.History.cs for how this is populated
+                     generically off every feature's own "XxxStatus" property. -->
+                <TabItem Header="{local:Tr Tab_History}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <DockPanel LastChildFill="False" Margin="0,0,0,8">
                             <TextBlock Text="{local:Tr History_Heading}" DockPanel.Dock="Left" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             <Button Content="{local:Tr Clear}" Command="{Binding ClearHistoryCommand}" DockPanel.Dock="Right" Padding="6,0" FontSize="10"/>
@@ -683,8 +660,10 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
+                </TabItem>
 
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=5}">
+                <TabItem Header="{local:Tr Tab_Settings}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <Expander Header="{local:Tr AdvancedParams_Header}" Margin="0,0,0,8">
                             <Grid Margin="0,6,0,0">
                                 <Grid.ColumnDefinitions>
@@ -796,8 +775,10 @@
                             </StackPanel>
                         </Expander>
                     </StackPanel>
+                </TabItem>
 
-                    <StackPanel Style="{StaticResource TabContent}" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=6}">
+                <TabItem Header="{local:Tr Tab_Help}">
+                    <StackPanel Style="{StaticResource TabContent}">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="English" Command="{Binding ShowHelpEnglishCommand}" Padding="10,4" Margin="0,0,6,0"
                                     IsEnabled="{Binding IsHelpIndonesian}"/>
@@ -810,8 +791,10 @@
                         <TextBlock Text="{Binding HelpIndonesianText}" TextWrapping="Wrap"
                                    Visibility="{Binding IsHelpIndonesian, Converter={StaticResource BoolToVis}}"/>
                     </StackPanel>
+                </TabItem>
 
-                    <StackPanel Style="{StaticResource TabContent}" HorizontalAlignment="Center" Visibility="{Binding SelectedTabIndex, Converter={StaticResource IdxVis}, ConverterParameter=7}">
+                <TabItem Header="{local:Tr Tab_About}">
+                    <StackPanel Style="{StaticResource TabContent}" HorizontalAlignment="Center">
                         <TextBlock Text="🌳" FontSize="56" HorizontalAlignment="Center" Margin="0,10,0,6"/>
                         <TextBlock Text="Forestry Toolkit" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center"/>
                         <TextBlock Text="{Binding AboutVersionText}" HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,14"/>
@@ -835,8 +818,8 @@
                         <TextBlock Text="{local:Tr About_SourceHeader}" FontWeight="SemiBold" HorizontalAlignment="Left"/>
                         <TextBlock Text="github.com/Ahmedseko/forestry-toolkit" HorizontalAlignment="Left" Margin="0,0,0,4"/>
                     </StackPanel>
-                </Grid>
-            </DockPanel>
+                </TabItem>
+            </TabControl>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
