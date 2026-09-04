@@ -126,6 +126,19 @@ namespace TreeCounterAddin
             set => SetProperty(ref _heading, value);
         }
 
+        // Which of the 8 top-level tabs is showing - drives the ListBox tab strip in
+        // TreeCounterDockpaneView.xaml (Esri_ListBoxPanelIndicator style, see the Esri
+        // Community feedback noted there) via SelectedIndex plus each tab content panel's
+        // own IndexToVisibilityConverter Visibility binding. Index order matches the
+        // ListBoxItem order in XAML: 0 Prepare, 1 Field Data, 2 Analyze, 3 Favorites,
+        // 4 History, 5 Settings, 6 Help, 7 About.
+        private int _selectedTabIndex;
+        public int SelectedTabIndex
+        {
+            get => _selectedTabIndex;
+            set => SetProperty(ref _selectedTabIndex, value);
+        }
+
         public ObservableCollection<string> RasterLayers { get; } = new();
         public ObservableCollection<string> PolygonLayers { get; } = new();
         public ObservableCollection<string> PointLayers { get; } = new();
