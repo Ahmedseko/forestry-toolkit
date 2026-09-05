@@ -17,7 +17,18 @@
             <Setter Property="Margin" Value="0,0,0,2"/>
         </Style>
 
-        <Style x:Key="ActionButton" TargetType="Button">
+        <!-- Unlike Expander (which ArcGIS Pro themes implicitly - see SectionExpander below),
+             Button has no implicit type-wide style in Pro's own resource dictionaries - only
+             explicitly-named ones (Esri_Button, Esri_SimpleButton, confirmed present in
+             ArcGIS.Desktop.Framework.dll). Without this, every plain <Button> in this file
+             fell back to raw unthemed WPF chrome (light face, dark text) regardless of Pro's
+             own light/dark theme - fine-ish in light theme, visibly wrong in dark theme. This
+             unkeyed style applies to every Button in this UserControl automatically, no need
+             to touch each one. ActionButton (below) needs the same BasedOn since an element's
+             own explicit Style replaces this implicit one rather than layering on top of it. -->
+        <Style TargetType="Button" BasedOn="{DynamicResource Esri_Button}"/>
+
+        <Style x:Key="ActionButton" TargetType="Button" BasedOn="{DynamicResource Esri_Button}">
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="Width" Value="140"/>
             <Setter Property="HorizontalAlignment" Value="Left"/>
