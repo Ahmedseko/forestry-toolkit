@@ -1,5 +1,16 @@
 # Forestry Toolkit (ArcGIS Pro Add-in)
 
+[![Stars](https://img.shields.io/github/stars/Ahmedseko/forestry-toolkit?style=flat-square)](https://github.com/Ahmedseko/forestry-toolkit/stargazers)
+[![License](https://img.shields.io/github/license/Ahmedseko/forestry-toolkit?style=flat-square)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/Ahmedseko/forestry-toolkit?style=flat-square)](https://github.com/Ahmedseko/forestry-toolkit/commits/main)
+[![Release](https://img.shields.io/github/v/release/Ahmedseko/forestry-toolkit?style=flat-square)](https://github.com/Ahmedseko/forestry-toolkit/releases/latest)
+[![Top language](https://img.shields.io/github/languages/top/Ahmedseko/forestry-toolkit?style=flat-square)](.)
+
+[![ArcGIS Pro 3.x](https://img.shields.io/badge/ArcGIS_Pro-3.x-1a1a1a?style=flat-square)](#build--deploy)
+[![Download .esriAddinX](https://img.shields.io/badge/%E2%AC%87_Download-ForestryToolkit.esriAddinX-0078D4?style=flat-square)](https://github.com/Ahmedseko/forestry-toolkit/releases/latest)
+
+[Releases](https://github.com/Ahmedseko/forestry-toolkit/releases) · [Devlog](docs/DEVLOG.md) · [Report an Issue](https://github.com/Ahmedseko/forestry-toolkit/issues)
+
 An ArcGIS Pro dockpane and ribbon tab for timber cruising / forestry work:
 land clearing and road/trail extraction from drone orthophotos, tree and oil
 palm detection, fishnet grids, field-data import (Excel, geotagged photos,
