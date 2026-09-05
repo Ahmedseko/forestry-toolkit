@@ -13,7 +13,22 @@
         <local:UiTextConverter x:Key="UiText"/>
         <local:IsErrorTextConverter x:Key="IsErrorText"/>
 
-        <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <!-- Same class of bug as the Button fix above, different property: a plain
+             <TextBlock> with no Foreground set falls back to WPF's hardcoded default (solid
+             black) rather than any ArcGIS Pro theme color - readable-ish in light theme,
+             invisible-ish in dark. Nearly every field label in this file is exactly that raw
+             a TextBlock (e.g. "Altitude (m)" - Grid.Row/Grid.Column labels, no Style attribute
+             at all), not just the ones using the FieldLabel key below - so this needs the same
+             unkeyed/implicit fix as Button, applying to all of them at once. Esri_TextStyleDefaultBrush
+             is the sibling of Esri_TextStyleSubduedBrush (already used successfully for
+             HintLine/StatusLine above) in the same Esri_TextStyle* family. This one is a plain
+             Setter, not BasedOn, so DynamicResource is valid here (BasedOn is the one that
+             requires StaticResource - see the Button fix comment). -->
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Esri_TextStyleDefaultBrush}"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="Margin" Value="0,0,0,2"/>
         </Style>
 
