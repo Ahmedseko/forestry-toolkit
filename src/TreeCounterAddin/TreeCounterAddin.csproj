@@ -61,6 +61,13 @@
     <Content Include="Config.daml">
       <SubType>Designer</SubType>
     </Content>
+    <!-- Ribbon icons (Esri sample convention: Content, not Resource - see
+         arcgis-pro-sdk-community-samples/Framework/XAML-Icons). CopyToOutputDirectory so
+         they land in $outDir and ride along with deploy.ps1's existing "$outDir\*" copy -
+         same reasoning as the tessdata/ comment there, no deploy.ps1 change needed. -->
+    <Content Include="Images\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

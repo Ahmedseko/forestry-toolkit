@@ -46,6 +46,8 @@
                 caption="Forestry Toolkit"
                 className="TreeCounterDockpaneShowButton"
                 loadOnClick="true"
+                smallImage="Images\Tree16.png"
+                largeImage="Images\Tree32.png"
                 keytip="B1">
           <tooltip heading="Forestry Toolkit">
             Open the tree detection, counting &amp; fishnet panel
@@ -57,6 +59,8 @@
                 caption="Detect Trees"
                 className="TreeCounterDetectShortcutButton"
                 loadOnClick="true"
+                smallImage="Images\Detect16.png"
+                largeImage="Images\Detect32.png"
                 keytip="B2">
           <tooltip heading="Detect Trees">
             Run detection using the settings currently configured in the panel
@@ -68,6 +72,8 @@
                 caption="Cancel"
                 className="TreeCounterCancelShortcutButton"
                 loadOnClick="true"
+                smallImage="Images\Cancel16.png"
+                largeImage="Images\Cancel32.png"
                 keytip="B3">
           <tooltip heading="Cancel Detection">
             Cancel the detection currently running
@@ -101,6 +107,8 @@
                 caption="About"
                 className="TreeCounterAboutButton"
                 loadOnClick="true"
+                smallImage="Images\About16.png"
+                largeImage="Images\About32.png"
                 keytip="B6">
           <tooltip heading="About Forestry Toolkit">
             Version and usage info
@@ -113,6 +121,8 @@
               className="PhotoPopupMapTool"
               loadOnClick="true"
               condition="esri_mapping_mapPane"
+              smallImage="Images\Photo16.png"
+              largeImage="Images\Photo32.png"
               keytip="B7">
           <tooltip heading="Photo Popup Tool">
             Click a point with an attached photo (Geotagged Field Photos or Photo Coordinate OCR) to show it in a floating card
@@ -125,6 +135,8 @@
               className="ColorSamplerMapTool"
               loadOnClick="true"
               condition="esri_mapping_mapPane"
+              smallImage="Images\ColorSampler16.png"
+              largeImage="Images\ColorSampler32.png"
               keytip="B8">
           <tooltip heading="Color Reference Sampler">
             Click points on a raster to record their RGB/ExG value, for calibrating detection thresholds against real colors - activated from the Analyze tab's Color Reference Sampler panel
