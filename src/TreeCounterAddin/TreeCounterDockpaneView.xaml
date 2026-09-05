@@ -25,10 +25,14 @@
              own light/dark theme - fine-ish in light theme, visibly wrong in dark theme. This
              unkeyed style applies to every Button in this UserControl automatically, no need
              to touch each one. ActionButton (below) needs the same BasedOn since an element's
-             own explicit Style replaces this implicit one rather than layering on top of it. -->
-        <Style TargetType="Button" BasedOn="{DynamicResource Esri_Button}"/>
+             own explicit Style replaces this implicit one rather than layering on top of it.
+             BasedOn must be StaticResource, not DynamicResource - BasedOn is a plain CLR
+             property of Style, not a DependencyProperty, so DynamicResourceExtension.ProvideValue
+             throws there and takes down this whole ResourceDictionary (a blank dockpane, not a
+             styling glitch - caught via live testing, not the build). -->
+        <Style TargetType="Button" BasedOn="{StaticResource Esri_Button}"/>
 
-        <Style x:Key="ActionButton" TargetType="Button" BasedOn="{DynamicResource Esri_Button}">
+        <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource Esri_Button}">
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="Width" Value="140"/>
             <Setter Property="HorizontalAlignment" Value="Left"/>
