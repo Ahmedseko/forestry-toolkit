@@ -838,7 +838,15 @@
 
                 <TabItem Header="{local:Tr Tab_About}">
                     <StackPanel Style="{StaticResource TabContent}" HorizontalAlignment="Center">
-                        <TextBlock Text="🌳" FontSize="56" HorizontalAlignment="Center" Margin="0,10,0,6"/>
+                        <!-- Source set in code-behind (TreeCounterDockpaneView.xaml.cs) - Images\*.png
+                             ships as a loose Content file next to the DLL (see .csproj), and this
+                             plugin's DLL lives under AssemblyLoadContext's own AssemblyCache folder,
+                             not ArcGISPro.exe's - so it has to be resolved via
+                             Assembly.GetExecutingAssembly().Location, not a plain XAML pack URI
+                             (which would resolve against the host exe) - see PythonBackendService.cs's
+                             own BackendDir comment for the same gotcha. -->
+                        <Image x:Name="AboutIcon" Width="64" Height="64" HorizontalAlignment="Center" Margin="0,10,0,6"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
                         <TextBlock Text="Forestry Toolkit" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center"/>
                         <TextBlock Text="{Binding AboutVersionText}" HorizontalAlignment="Center" Foreground="{DynamicResource Esri_TextStyleSubduedBrush}" Margin="0,0,0,14"/>
 

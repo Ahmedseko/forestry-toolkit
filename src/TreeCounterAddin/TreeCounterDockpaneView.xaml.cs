@@ -1,5 +1,9 @@
+using System;
 using System.ComponentModel;
+using System.IO;
+using System.Reflection;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 
 namespace TreeCounterAddin
 {
@@ -10,6 +14,20 @@ namespace TreeCounterAddin
         public TreeCounterDockpaneView()
         {
             InitializeComponent();
+
+            // Assembly.GetExecutingAssembly().Location, not AppDomain.CurrentDomain.BaseDirectory
+            // (that points at ArcGISPro.exe's own folder, not this add-in's AssemblyCache folder -
+            // same gotcha PythonBackendService.cs's BackendDir already documents) - and wrapped in
+            // try/catch since a missing/unreadable icon file shouldn't take down the whole panel.
+            try
+            {
+                var dllDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+                var iconPath = Path.Combine(dllDir, "Images", "AddinIcon32.png");
+                if (File.Exists(iconPath))
+                    AboutIcon.Source = new BitmapImage(new Uri(iconPath));
+            }
+            catch { /* About tab just shows no icon - not worth surfacing an error for this */ }
+
             DataContextChanged += (_, e) =>
             {
                 if (e.OldValue is TreeCounterDockpaneViewModel oldVm)
