@@ -26,6 +26,29 @@ Tree/oil palm detection is a port of the QGIS plugin
 accuracy — see [Known limitations](#known-limitations) before trusting a
 count from it.
 
+## Demos
+
+Screen captures from ArcGIS Pro, hosted as [release assets](https://github.com/Ahmedseko/forestry-toolkit/releases/tag/demo-videos) (compressed from the originals) since git history is the wrong place for video files.
+
+<table>
+<tr>
+<td width="50%">
+
+**Flight Mission Planner** — survey polygon in, coverage flight lines + battery split out.
+
+<video src="https://github.com/Ahmedseko/forestry-toolkit/releases/download/demo-videos/flight-mission-planner.mp4" controls width="100%"></video>
+
+</td>
+<td width="50%">
+
+**NASA FIRMS Fire Hotspots** — loading satellite-detected fire hotspots over the current map extent.
+
+<video src="https://github.com/Ahmedseko/forestry-toolkit/releases/download/demo-videos/nasa-firms.mp4" controls width="100%"></video>
+
+</td>
+</tr>
+</table>
+
 <!-- Screenshots: commented out until docs/images/*.png are filled in
 (none ready yet, 2026-08-18). See docs/images/README.md for filenames. -->
 
