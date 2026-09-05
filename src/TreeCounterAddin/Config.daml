@@ -8,6 +8,7 @@
   <AddInInfo id="{27166c1c-05ea-41b4-a975-d5294773acc1}" version="0.1.0" desktopVersion="3.7.0">
     <Name>Forestry Toolkit</Name>
     <Description>Detect and count trees from drone orthophotos (ExG + YOLOv8 for oil palm), plus fishnet grid generation for timber cruising. Ported from the QGIS plugin LandTree Analyzer.</Description>
+    <Image>Images\AddinIcon32.png</Image>
     <Author>ahmedseko</Author>
     <Company>ahmedseko</Company>
     <Date>07/26/2026</Date>
